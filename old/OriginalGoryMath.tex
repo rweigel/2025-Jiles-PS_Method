@@ -1,0 +1,372 @@
+\documentclass[9pt]{article}
+\usepackage{xcolor}
+\usepackage[letterpaper, margin = 1.5cm]{geometry} 
+\usepackage[T1]{fontenc} 
+\usepackage{amsmath, amsfonts, amssymb, mathtools}
+\usepackage{bm}
+\usepackage{multicol}
+\setlength{\columnsep}{1.5cm} 
+
+%%%% Document Information %%%%
+    \title{PS method}
+    \author{Heather Jiles}
+    \date{November \(22^{nd}\) 2024}
+
+
+\begin{document}
+\begin{multicols}{2}
+
+\maketitle
+\section{Introduction}
+The study of Ordinary Differential Equations (ODE) and methods for approximation are commonly centered around the use and application of Runge-Kutta methods which iteratively approximate a solution using the weighted averages of slopes. While many variations for this methods exist, the fourth-order Runge-Kutta approximation is the most popular while adaptive Runge-Kutta methods are often employed when problems undergo abrupt changes that aren’t always well captured by the fixed method approach, applying a smaller step size when needed [1].\\
+
+In contrast, the Parker-Sochacki method builds upon the classical Picard iteration technique by leveraging power series expansions and successive approximations to solve differential equations more efficiently. In the traditional Picard approach, an ODE with known initial values is solved iteratively, each iteration involves approximating the equation as a power series and progressively refining the solution. When the function involved satisfies appropriate conditions, this process converges to the exact solution. While the Picard method is theoretically powerful and offers high-order accuracy, its practical use has historically been limited due to the algebraic complexity of expanding subsequent expressions. The Parker-Sochacki method overcomes this by reformulating the problem into a computationally manageable form by introducing auxiliary variables when necessary to further reduce the complexity of the equation. It systematically determines the coefficients of the power series representing the solution, making the approach practical for a broader range of problems. [2].  \\
+
+This paper investigates the potential of the Parker-Sochacki method by examining three applications: the motion of a charged particle in a constant magnetic field, in a hyperbolic magnetic field, and in a dipole field. The detailed mathematical formulation for determining coefficients is provided and each applications is compared to both a fixed-step fourth-order Runge-Kutta method and the adaptive-step Runge-Kutta method in python. \\
+
+First, to demonstrate the Parker-Sochacki method, consider the following example
+
+    \begin{equation}
+        \frac{dy}{dx}=y\quad\quad y_0=1
+    \end{equation}
+To apply either the Picard or Parker-Sochacki method, express $y$ as a power series
+    \begin{gather}
+            y=\sum_{j=0}^\infty y_jx^j=y_0+\sum_{j=1}^\infty y_{j}x^{j}\label{eq:1.1} \\    
+            \frac{dy}{dx}=\sum_{i=0}^\infty y_jjx^{j-1}
+    \end{gather}
+Which we now substitute into our original ODE:
+    \begin{gather}
+            \sum_{j=0}^\infty y_iix^{i-1}=\sum_{j=0}^\infty y_jx^j\\
+            \sum_{j=-1}^\infty y_{j+1}(j+1)x^{j}=\sum_{j=0}^\infty y_jx^j\\
+            \sum_{j=0}^\infty y_{j+1}(j+1)x^{j}=\sum_{j=0}^\infty y_jx^j\\
+            y_{j+1}(j+1)x^{j}=y_jx^j\\
+            y_{j+1}=\frac{y_j}{(j+1)} \label{eq:1.2} 
+    \end{gather}
+Equation \ref{eq:1.2} can now be used to calculate the coefficients for Equation \ref{eq:1.1}. Computing the first few coefficients yields
+    \begin{equation}
+        y_1=1\quad,\quad y_2=\frac{1}{2}\quad,\quad y_3=\frac{1}{6}
+    \end{equation}
+which gives
+    \begin{equation}
+        y=1+x+\frac{x^2}{2!}+\frac{x^3}{3!}+\dots
+    \end{equation}
+resulting in the exact solution
+    \begin{equation}
+        y=e^x
+    \end{equation}
+Next, consider the following example
+        \begin{equation}\label{eq:1.6} 
+        \frac{dy}{dx}=y^2\quad\quad y_0=1
+    \end{equation}
+where again $y$ can be written as a power series
+    \begin{equation}
+        y=\sum_{j=0}^\infty y_jx^j=y_0+\sum_{j=1}^\infty y_{j}x^{j}\label{eq:1.3}    
+    \end{equation}
+Introducing an auxiliary variable $z$ allows for further simplification of the nonlinear term. The introduction of the auxiliary variable is the fundamental divergence of the Parker-Sochacki method from the Picard method and is what allows for the use of this method with non-linear terms that historically limited the use of the Picard. 
+    \begin{equation}
+        z=y^2=\sum_{j=0}^\infty z_jx^j
+    \end{equation}
+Which is equivalent to
+    \begin{equation}\label{eq:1.4}
+        \begin{split}
+            z=&\left(\sum_{j=0}^\infty y_jx^j\right)\left(\sum_{j=0}^\infty y_jx^j\right)\\
+            =&\sum_{j=0}^\infty\left(\sum_{k=0}^jy_ky_{j-k}\right)x^j        
+        \end{split}
+    \end{equation}
+therefore
+    \begin{equation}
+        z_j=\sum_{k=0}^jy_ky_{j-k}
+    \end{equation}
+Since  
+    \begin{equation}
+        \frac{dy}{dx}=\sum_{j=0}^\infty (j+1)y_{j+1}x^j
+    \end{equation}
+this is set equal to Equation \ref{eq:1.4} giving
+    \begin{gather}
+        \sum_{j=0}^\infty (j+1)y_{j+1}x^j=\sum_{j=0}^\infty\left(\sum_{k=0}^jy_ky_{j-k}\right)x^j\\
+        y_{j+1}=\frac{1}{(j+1)}\left(\sum_{k=0}^jy_ky_{j-k}\right)\label{eq:1.5}
+    \end{gather}
+Equation \ref{eq:1.5} now provides the necessary coefficients to compute the solution. Calculating the first few coefficients gives
+    \begin{equation}
+        \begin{split}
+            y_1=y_0y_0=1\\
+            y_2=\frac{1}{2}\left(y_0y_1+y_1y_0\right)=1\\
+            y_3=\frac{1}{3}\left(y_0y_2+y_1y_1+y_2y_0 \right)=1
+        \end{split}
+    \end{equation}
+Utilizing these coefficients in Equation \ref{eq:1.3} results in
+    \begin{equation}
+        y=1+x+x^2+x^3+\dots=\frac{1}{1-x}
+    \end{equation}
+which is the exact solution to Equation \ref{eq:1.6}. These two examples demonstrate how the Parker-Sochacki method expands on the principles of the Picard iteration by utilizing auxiliary variables and reducing non-linear equations into coupled ODEs that can be solved using algebraic operations. 
+\section{Constant Magnetic Field}
+The first application will examine a particle traveling in a constant magnetic field, obeying the classical Lorentz Force Law,  
+    \begin{equation} \label{eq:4} 
+        F=m\frac{d\mathbf{v}}{dt}=q\mathbf{v}\times\mathbf{B}
+    \end{equation}
+where
+    \begin{equation}  \label{eq:1}
+        \frac{d\mathbf{r}}{dt}=\mathbf{v}
+    \end{equation}
+Letting $\frac{q}{m}=1$ and defining the initial conditions as 
+    \begin{equation}
+        \begin{split}
+            \mathbf{v}(t=0)=\mathbf{v}_0\\
+            \mathbf{r}(t=0)=\mathbf{r}_0\\
+        \end{split}
+    \end{equation}
+where $\mathbf{r}$ and $\mathbf{v}$ are the three-dimensional position and velocity vectors, the power series can now be determined.
+\subsection{Determining the Power Series}
+Expressions for the $x$-component coefficients will be derived, this method can easily be expanded to encompass all other axes. 
+    \begin{equation}\label{eq:2}    
+        x(t)=\sum_{i=0}^\infty x_it^i 
+    \end{equation}
+    \begin{equation}\label{eq:3}  
+        v_x(t)=\sum_{j=0}^\infty v_{xj}t^j    
+    \end{equation}
+plugging this into the one-dimensional version of equation \ref{eq:1} gives the following
+    \begin{equation}
+        \begin{split}
+            \frac{dx}{dt}=&v\\
+            \frac{d}{dt}\left(\sum_{i=0}^\infty x_it^i\right)=& \sum_{j=0}^\infty v_{xj}t^j\\ 
+            \sum_{i=0}^\infty ix_it^{i-1}=&\sum_{j=0}^\infty v_{xj}t^j\\ 
+        \end{split}
+    \end{equation}
+we want $t$'s to be of the same order and therefore make the substitution $i=j+1$    
+    \begin{equation}
+        \begin{split}
+            \sum_{j=-1}^\infty (j+1)x_{j+1}t^{j}=&\sum_{j=0}^\infty v_{xj}t^j\\ 
+        \end{split}
+    \end{equation}
+Note that for the summation on the left-hand side, $j=-1$ will always result in 0; therefore, with no loss of generality, we can start the summation at zero.
+    \begin{equation}
+        \begin{split}
+           (j+1)x_{j+1}t^{j}=&v_{xj}t^j\\  
+        x_{j+1}=&\frac{v_{xj}}{j+1}\\
+        \end{split}
+    \end{equation}
+which we can finally plug back into equation \ref{eq:2}, fist making the substitution $i=j+1$ in equation \ref{eq:2} 
+    \begin{equation}
+        \begin{split}
+            x(t)=&\sum_{i=0}^\infty x_it^i\\
+                =&\sum_{j=-1}^\infty x_{j+1}t^{j+1}\\
+                =&\,x_0 + \sum_{j=0}^\infty x_{j+1}t^{j+1}\\
+                &\boxed{x(t)=\,x_0 + \sum_{j=0}^\infty\frac{v_{xj}}{j+1} t^{j+1}}\\ 
+        \end{split}
+    \end{equation}
+We can follow a similar procedure for the velocity, taking the $x$ dimension of equation \ref{eq:4}, and the relation in equation \ref{eq:3}, extended to $v_y$ and $v_z$
+    \begin{equation}
+        \begin{split}
+        \frac{dv_x}{dt}=&v_yB_z-v_zB_y\\
+        \frac{d}{dt}\left(\sum_{j=0}^\infty v_{xj}t^j\right)=&\sum_{k=0}^\infty (v_{yk}B_z-v_zkB_y)t^k\\  
+        \sum_{j=0}^\infty jv_{xj}t^{j-1}=&\sum_{k=0}^\infty (v_{yk}B_z-v_zkB_y)t^k  
+        \end{split}
+    \end{equation}
+let $j=k+1$ so that we can match powers in $t$
+    \begin{equation}
+        \begin{split}  
+        \sum_{k=-1}^\infty (k+1)v_{x(k+1)}t^{k}=&\sum_{k=0}^\infty (v_{yk}B_z-v_zkB_y)t^k  
+        \end{split}
+    \end{equation}
+again, we note on the left hand side that for $k=-1$ the result is zero, therefore, with no loss to generality we can start from $k=0$
+    \begin{equation}
+        \begin{split}  
+        \sum_{k=0}^\infty (k+1)v_{x(k+1)}t^{k}=&\sum_{k=0}^\infty (v_{yk}B_z-v_zkB_y)t^k  \\
+        \sum_{k=0}^\infty v_{x(k+1)}=&\sum_{k=0}^\infty\frac{1}{k+1} (v_{yk}B_z-{v_zk}B_y)  \\
+        \end{split}
+    \end{equation}
+we can now plug this back into equation \ref{eq:3}, making the substitution $j=k+1$
+    \begin{equation}
+        \begin{split}
+            v_x(t)=&\sum_{j=0}^\infty v_{xj}t^j\\
+                =&\sum_{k=-1}^\infty v_{x(k+1)}t^{k+1}\\
+                =&\,v_{x0}+\sum_{k=0}^\infty v_{x(k+1)}t^{k+1}\\
+            &\boxed{v_x(t)=v_{x0}+\sum_{k=0}^\infty\frac{1}{k+1} (v_{yk}B_z-v_{zk}B_y)t^{k+1}}
+        \end{split}
+    \end{equation}
+To summarize, in all three dimensions, we have the following six equations governing the motion of a particle in a magnetic field.
+    \begin{align}
+        x(t)=\,x_0 + \sum_{i=0}^\infty\frac{v_{xi}}{i+1} t^{i+1}\\
+        y(t)=\,y_0 + \sum_{i=0}^\infty\frac{v_{yi}}{i+1} t^{i+1}\\
+        z(t)=\,z_0 + \sum_{i=0}^\infty\frac{v_{zi}}{i+1} t^{i+1}\\
+        v_x(t)=v_{x0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{yi}B_z-v_{zi}B_y)t^{i+1}\\
+        v_y(t)=v_{y0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{zi}B_x-v_{xi}B_z)t^{i+1}\\
+        v_z(t)=v_{z0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{xi}B_y-v_{yi}B_x)t^{i+1}
+    \end{align}
+Remembering that the summations in each equation represent $x_{i+1}$, $y_{i+1}$, $z_{i+1}$, $v_{x(i+1)}$, $v_{y(i+1)}$, and $v_{z(i+1)}$ terms, respectively
+
+\subsection{Validation Cases}
+\subsubsection{Constant $B_z$ and $v_y$}
+The constant magnetic field allows us to probe the very well know physics of a particle exhibiting cyclotron motion. For our first use case, we start with a simple case with a constant magnetic field in the $z$-direction and an initial velocity in the $v_y$-direction:
+\begin{center}
+\begin{tabular}{ l l l }
+ x_0=0 & v_{x0}=0 &B_x=0 \\ 
+ y_0=0 & v_{y_0}=500 \text{ m/s} &B_y=0  \\  
+ z_0=0 & v_{z_0}=0& B_z=1\,\text{T}\\
+ &t=\,0.002\,\text{s}&
+\end{tabular}
+\end{center}
+This means our equations reduce to 
+    \begin{align}
+        x(t)= \sum_{i=0}^\infty\frac{v_{xi}}{i+1} t^{i+1}\\
+        y(t)=\sum_{i=0}^\infty\frac{v_{yi}}{i+1} t^{i+1}\\
+        z(t)=\sum_{i=0}^\infty\frac{v_{zi}}{i+1} t^{i+1}\\
+    \end{align}
+    \begin{align}
+        v_x(t)=\sum_{i=0}^\infty\frac{1}{i+1} (v_{yi}B_z)t^{i+1}\\
+        v_y(t)=v_{y0}+\sum_{i=0}^\infty\frac{1}{i+1} (-v_{xi}B_z)t^{i+1}\\
+        v_z(t)=0
+    \end{align}
+For this initial validation, we will use four coefficients, $i=3$. For the code, we will use 1000 steps, therefore the time step of each calculation will be 2e-6 s since our total time is 0.002 s.
+\section{Hyperbolic Magnetic Field}
+    \begin{equation} 
+        F=m\frac{d\mathbf{v}}{dt}=q\mathbf{v}\times\mathbf{B}
+    \end{equation}
+where
+    \begin{equation}  
+        \frac{d\mathbf{r}}{dt}=\mathbf{v}
+    \end{equation}
+    \begin{equation}
+        \mathbf{B}=\begin{pmatrix}
+            0\\0\\\tanh (y)
+        \end{pmatrix}
+    \end{equation}
+we let $\frac{q}{m}=1$ and have initial conditions defined as 
+    \begin{equation}
+        \begin{split}
+            \mathbf{v}(t=0)=\mathbf{v}_0\\
+            \mathbf{r}(t=0)=\mathbf{r}_0\\
+        \end{split}
+    \end{equation}
+where $\mathbf{r}$ and $\mathbf{v}$ are the 3 dimensional position and velocity vectors.
+\subsection{Determining the Power Series}
+Similar to the constant $\mathbf{B}$ we have
+    \begin{equation}    
+        x(t)=\sum_{i=0}^\infty x_it^i 
+    \end{equation}
+    \begin{equation}
+        v_x(t)=\sum_{j=0}^\infty v_{xj}t^j    
+    \end{equation}
+we now introduce 
+    \begin{equation}
+        B_z=\sum_{k=0}^\infty B_{z,k}t^k
+    \end{equation}
+Because the magnetic field will change as the particle progresses in it's trajectory, we must account for the change in the magnetic field with time as well; hence, introducing it as a power series as well  
+    \begin{equation}
+    \begin{split}
+        \frac{dB_z}{dt}=&[1-\tanh^2(y)]\frac{dy}{dt}=\underbrace{(1-B_z^2)}_a v_y\\
+        \frac{dB_z}{dt}=&av_y\\
+        \therefore\\
+        \frac{da}{dt}=&-2B_z\frac{dB_z}{dt}\\
+        a=&\sum_{l=0}^\infty a_lt^l
+        \end{split}
+    \end{equation}
+Where at $t=0$ we have 
+    \begin{equation}
+        \begin{split}
+            B_{z0}=\tanh(y)\\
+            a_0=1-B_{z0}^2
+        \end{split}
+    \end{equation}
+So now, let's take a look at $\mathbf{B_z}$ 
+    \begin{equation}
+        \begin{split}
+            \frac{dB_z}{dt}=&\frac{d}{dt}\left(\sum_{k=0}^\infty B_{z,k}t^k\right)\\
+            av_y=&\sum_{k=0}^\infty kB_{z,k}t^{k-1}\\
+            \left(\sum_{l=0}^\infty a_lt^l\right)\left(\sum_{m=0}^\infty v_{y,m}t^m\right)=&\sum_{k=0}^\infty kB_{z,k}t^{k-1}\\                  
+            \sum_{n=0}^\infty \left(\sum_{j=0}^n a_jv_{y,n-j}\right)t^n=&\sum_{k=0}^\infty kB_{z,k}t^{k-1}\\
+        \end{split}
+    \end{equation}
+let $k=n+1$, noting that n=-1 results in zero so we start at n=0
+    \begin{equation}
+        \begin{split}            
+            \sum_{n=0}^\infty \left(\sum_{j=0}^n a_jv_{n-j}\right)t^n=&\sum_{n=0}^\infty (n+1)B_{z,n+1}t^{n}\\
+            B_{z,i+1}=\frac{1}{i+1}\sum_{j=0}^i a_jv_{y,i-j}
+        \end{split}
+    \end{equation}
+Which we can plug back into our expansion
+$$        B_z=\sum_{k=0}^\infty B_{z,k}t^k\longrightarrow B_z=B_{z,0}+\sum_{i=0}^\infty B_{z,i+1}t^{i+1}$$
+    \begin{equation}
+        \boxed{B_z=B_{z,0}+\sum_{i=0}^\infty \frac{t^{i+1}}{i+1}\sum_{j=0}^i a_jv_{y,i-j}}
+    \end{equation}
+% if we now let $k=j+1$ we have
+%     \begin{equation}
+%         \begin{split}            
+%             \boxed{B_{z,n+1}=\frac{\sum_{k=1}^{n+1} a_{k-1}v_{n-k+1}}{n+1}}
+%         \end{split}
+%     \end{equation}
+    
+Similarly, for $a$ we have
+    \begin{equation}
+        \begin{split}
+            a=&\sum_{l=0}^\infty a_lt^l\\
+            \frac{da}{dt}=&\sum_{l=0}^\infty la_lt^{l-1}\\
+            -2B_z\frac{dB}{dt}=&\sum_{l=0}^\infty la_lt^{l-1}\\
+            -2\left(\sum_{m=0}^\infty B_{z,m}t^m\right)\left(\sum_{k=0}^\infty kB_{z,k}t^{k-1}\right)=&\sum_{l=0}^\infty la_lt^{l-1}\\
+            \end{split}
+    \end{equation}
+            
+but when $k=0$ the left side is 0 so we are really starting at k=1, so let $j=k-1$, and since the first term for the sum on the right is also zero we do some similar mathematics and let $l-1=i$
+            
+    \begin{equation}
+        \begin{split}            
+            -2\left(\sum_{m=0}^\infty B_{z,m}t^m\right)\left(\sum_{j=0}^\infty (j+1)B_{z,j+1}t^{j}\right)=&\sum_{i=0}^\infty (i+1)a_{i+1}t^{i}\\
+            -2\sum_{i=0}^\infty\sum_{j=0}^i(j+1)B_{z,i-j}B_{z,j+1}t^{i}=&\sum_{i=0}^\infty (i+1)a_{i+1}t^{i}\\
+            a_{i+1}=&-\frac{2}{(i+1)}\sum_{j=0}^i(j+1)B_{z,i-j}B_{z,j+1}
+        \end{split}
+    \end{equation}
+which we can plug back into our original expansion
+    \begin{equation}
+        \begin{split}
+            a=\sum_{l=0}^\infty a_lt^l\longrightarrow a=a_0+\sum_{i=0}^\infty a_{i+1}t^{i+1}\\
+            \boxed{a=a_0+\sum_{i=0}^\infty -\frac{2t^{i+1}}{(i+1)}\sum_{j=0}^i(j+1)B_{z,i-j}B_{z,j+1}}
+        \end{split}
+    \end{equation}
+
+
+
+With our remainings equations si
+\begin{align}
+        x(t)=\,x_0 + \sum_{i=0}^\infty\frac{v_{xi}}{i+1} t^{i+1}\\
+        y(t)=\,y_0 + \sum_{i=0}^\infty\frac{v_{yi}}{i+1} t^{i+1}\\
+        z(t)=\,z_0 + \sum_{i=0}^\infty\frac{v_{zi}}{i+1} t^{i+1}\\
+        v_x(t)=v_{x0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{y,i}B_{z,i})t^{i+1}\\
+        v_y(t)=v_{y0}+\sum_{i=0}^\infty\frac{1}{i+1} (-v_{x,i}B_{z,i})t^{i+1}\\
+        v_z(t)=v_{z0}
+    \end{align}
+
+\section{Magnetic Dipole}
+Similar to what's been done up until now, the Lorentz force is 
+    \begin{equation} 
+        F=m\frac{d\mathbf{v}}{dt}=q\mathbf{v}\times\mathbf{B}
+    \end{equation}
+With 
+    \begin{equation} 
+        \mathbf{B(r)}=\frac{\mu_0}{4\pi}\cdot\frac{3(\mathbf{m\cdot\hat{r}})\hat{r}-\mathbf{m}}{r^3}
+    \end{equation}
+where $\mathbf{m}=m\hat{z}$ so that 
+    \begin{equation}
+        \mathbf{B(r)}=\frac{\mu_0}{4\pi}\cdot\frac{3m\hat{r}-\mathbf{m}}{r^3}
+    \end{equation}
+or explicitly,
+    \begin{align}
+        B_x=&\frac{\mu_0m}{4\pi}\frac{3xz}{r^5}\\
+        B_y=&\frac{\mu_0m}{4\pi}\frac{3yz}{r^5}\\
+        B_z=&\frac{\mu_0m}{4\pi}\frac{3z^2-r^2}{r^5}
+    \end{align}
+Now for the coordinates we have
+    \begin{align}
+        x=&\sum_{n=0}^\infty x_nt^n\longrightarrow x^2=\left(\sum_{n=0}^\infty x_nt^n\right)^2=\sum_{n=0}^\infty\left(\sum_{j=0}^n x_jx_{n-j} \right)t^n\\
+        y=&\sum_{n=0}^\infty y_nt^n\longrightarrow y^2=\left(\sum_{n=0}^\infty y_nt^n\right)^2=\sum_{n=0}^\infty\left(\sum_{j=0}^n y_jy_{n-j} \right)t^n\\
+        z=&\sum_{n=0}^\infty z_nt^n\longrightarrow z^2=\left(\sum_{n=0}^\infty z_nt^n\right)^2=\sum_{n=0}^\infty\left(\sum_{j=0}^n z_jz_{n-j} \right)t^n\\
+        r^2=&\sum_{j=0}^\infty r_n^2t^n=\sum_0^\infty \left(\sum_{j=0}^n x_jx_{n-j}+y_jy_{n-j}+z_jz_{n-j}\right)t^n
+    \end{align}
+S. C. Chapra and R. P. Canale, Numerical Methods for Engineers , 7th ed. New York, NY: McGraw-Hill, 2015, pp. 709-755.
+J. W. Rudmin, "Application of the Parker-Sochacki Method to Celestial Mechanics," Physics Dept., James Madison University, Harrisonburg, VA, Tech. Rep., March 1998. Available: http://educ.jmu.edu/~sochacjs/VideoWall/nbody/ps.pdf 
+
+
+\end{document}
+
+
+
+

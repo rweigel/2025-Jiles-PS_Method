@@ -756,7 +756,7 @@ for which the derivative with respect to $x$ is
     \end{equation}
 We see that $y_0=y(0)$ follows from Eq.~\eqref{EQN: ExI y}. Substituting Eqs. \eqref{EQN: ExI y} and \eqref{EQN: ExI dy/dxi} into Eq.~\eqref{EQN: ExI dy/dx} gives
     \begin{equation*}
-            \sum_{i=0}^\infty y_iix^{i-1}=\sum_{i=0}^\infty y_ix^i.\\
+            \sum_{i=0}^\infty y_iix^{i-1}=\sum_{i=0}^\infty y_ix^i.
     \end{equation*}
 The recurrence relation is derived by first equating common powers of $x$ by reindexing the left-hand side using $i \to i+1$ giving
     \begin{equation*}
@@ -922,8 +922,6 @@ After each iteration, the dynamical variables $x$ and $v$ are updated using recu
     \end{align*}
 \emph{Auxiliary variable, $u$, reinitialized using its definition, $u=v^2$. For dynamical variables, the new initial condition is the last value from the truncated sum.}
 \end{minipage}\\
-\newline
-
 
 To demonstrate the step-wise use of the recurrence relations, consider iteration $k=1$ and let $M=1$ and $\Delta t=1$.  From Eqs. \eqref{eqn:EXIII xi ODE solver}-\eqref{eqn:EXIII ui ODE solver}, the coefficient updates become
     \begin{gather*}

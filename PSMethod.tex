@@ -1,611 +1,905 @@
 \documentclass{article}
 \usepackage{graphicx}
+\usepackage{appendix}
 \usepackage{float}
 \usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{amsmath, amsfonts, amssymb, mathtools}
 \usepackage[letterpaper, margin = 1.5cm]{geometry} 
 \usepackage[T1]{fontenc} 
-\usepackage{amsmath, amsfonts, amssymb, mathtools}
+\usepackage{newtxtext,newtxmath}
+\usepackage{subcaption}
+\usepackage{caption}
 \usepackage{bm}
-\usepackage[style=numeric,sorting=none]{biblatex} %Imports biblatex package
-\addbibresource{ref.bib} %Import the bibliography file
+\usepackage[style=numeric,sorting=none]{biblatex} 
+\addbibresource{ref.bib} 
 \usepackage{multicol}
 \usepackage[font=footnotesize]{caption}
 \setlength{\columnsep}{1.5cm} 
+\usepackage{lineno}
+\usepackage[hyperindex,breaklinks]{hyperref}
+\usepackage{csquotes}
+\usepackage{authblk}
+\usepackage{siunitx}
+\usepackage{array} 
+\usepackage{makecell} 
 
-
-%%%% Document Information %%%%
-    \title{The Parker-Sochacki Method vs. Runge-Kutta Methods for Particle Motion in Magnetic Fields
-}
-    \date{\today}                                   
+\title{High-Precision Long-Time Numerical Solutions of Charged-Particle Motion in a Static Magnetic Dipole Field}
+\author{H.L. Jiles}
+\author{R.S. Weigel}
+\affil{Space Weather Lab\\Department of Physics and Astronomy\\George Mason University}
+\date{\today}
 
 \begin{document}
-% \begin{multicols}{2}
 \maketitle
 
+\linenumbers % remove for arxiv uploads
+\captionsetup[subfigure]{font=footnotesize}
 \begin{abstract}
-The Parker–Sochacki (PS) method is investigated as an alternative approach for solving the equations of motion for charged particles in magnetic fields. While Runge-Kutta methods, particularly the fixed-step fourth-order (RK4) and the adaptive (RK45), are widely accepted and commonly applied to such problems, the PS method offers a fundamentally different strategy based on power series expansions and auxiliary variables. Through detailed implementations, the PS method is compared against RK4 and RK45 across three physical scenarios: constant, hyperbolic, and dipole magnetic fields. The intent is not to promote one method over another, but to assess the practical viability of the PS method and highlight its comparability to established techniques in terms of accuracy, stability, and computational performance. Results demonstrate that, with proper formulation, the PS method yields consistent and accurate trajectories, making it a useful tool for certain classes of dynamical systems.
+The motion of a charged particle in a magnetic dipole field has no general analytical solution, but has two exact invariants: the kinetic energy and the canonical azimuthal angular momentum. 
+%The magnetic moment, the first adiabatic invariant associated with the gyromotion, is conserved only approximately; although it is the basis for the guiding center approximation, its invariance over long timescales has no rigorous justification. Historically, numerical analysis of the long-time validity of magnetic moment invariance has been limited by computational speed and accuracy. 
+The guiding center approximation is frequently used to understand trapped particle motion, but it is known to be valid only for limited times, and its assumptions are not satisfied for all trapped particles. Addressing these issues has historically been limited by computational speed and accuracy.
+In this work, we investigate the use of the Parker--Sochacki power series (PS) method, benchmarking it against Runge--Kutta (RK) methods for this problem and using the conservation of the exact invariants as the measure of long-time accuracy and stability. Unlike the fourth-order (RK4), Dormand--Prince (RK45), and symplectic Gauss--Legendre (RKG) methods, which use derivative estimates at each time step, the PS method uses a power series expansion of the solution in time. Benchmarked at identical fixed time steps for protons and electrons over multiple energies and pitch angles, the PS method conserves the kinetic energy 4 to 13 orders of magnitude better than the RK methods, and the canonical momentum 4 to 10 orders better than the explicit RK methods and comparably to RKG. PS is the only method that is accurate and stable across all simulations considered in this study. In long-time simulations, PS errors grow approximately linearly over $10^9$ equatorial gyroperiods, whereas RKG develops secular energy error growth beyond $10^6$. When the methods are instead compared at a target relative kinetic energy error, rather than a common fixed time step, the PS method is roughly ten times faster than RK4 and twice as fast as RKG in representative runs. These results demonstrate that the PS method can be used to evaluate the long-time behavior of charged particles trapped in a dipole field, over timescales and in regimes where the validity of the guiding center approximation is unknown.
 \end{abstract}
 
-\section{Introduction}
-The study of Ordinary Differential Equations (ODE) and methods for approximation are commonly centered around the use and application of Runge-Kutta methods which iteratively approximate a solution using the weighted averages of slopes. While many variations for this methods exist, the fourth-order Runge-Kutta approximation is the most popular while adaptive Runge-Kutta methods are often employed when problems undergo abrupt changes that aren’t always well captured by the fixed method approach, applying a smaller step size when needed \cite{numericalmethods}.\\
+\section{Introduction}\label{SEC:intro}
+Many physical systems can be modeled by ordinary differential equations (ODEs), yet closed-form solutions exist only for linear problems and a limited set of specially structured nonlinear problems, making numerical methods essential \cite{Chapra2021}. Space physics offers a demanding example, where the motion of a charged particle in a magnetic dipole field has no general analytical solution \cite{DragtFinn1976} yet has two exact invariants of motion: kinetic energy and canonical azimuthal angular momentum (hereafter referred to as canonical momentum). Numerical solutions of the long-time dynamics must conserve these invariants across many gyroperiods, posing an accuracy challenge. Numerical ODE solution methods such as Runge--Kutta (RK) have become standard tools \cite{Chapra2021, Butcher2016}; these advance the solution incrementally by sampling derivative estimates at each time step. The Parker--Sochacki power series (PS) method is a conceptually distinct alternative: rather than estimating derivatives at each time step, it uses a time-dependent power-series expansion of the solution specific to the system of equations. In this work, we implement the PS method for relativistic charged-particle dynamics in a static magnetic dipole field and evaluate its ability to conserve the system's exact invariants. Evaluating the exact invariants is motivated by a third quantity only approximately conserved in the dipole field: the magnetic moment, $\mu = p_{\perp}^{2}/(2mB)$, the first adiabatic invariant.
 
-In contrast, the Parker-Sochacki (PS) is a numerical method that  builds upon the classical Picard iteration technique by leveraging power series expansions and successive approximations to solve differential equations more efficiently. In the traditional Picard approach, an ODE with known initial values is solved iteratively, each iteration involves approximating the equation as a power series and progressively refining the solution. When the function involved satisfies appropriate conditions, this process converges to the exact solution. While the Picard method is theoretically powerful and offers high-order accuracy, its practical use has historically been limited due to the algebraic complexity of expanding subsequent expressions. The PS method overcomes this by reformulating the problem into a computationally manageable form by introducing auxiliary variables when necessary to further reduce the complexity of the equation. It systematically determines the coefficients of the power series representing the solution, making the approach practical for a broader range of problems \cite{parker}\cite{wolf}\cite{rudmin}.  \\
+%Chapra2021: 
+%"For the time being, the important fact is that exact solutions for many ODEs of practical importance are not available. As is true for most situations discussed in other parts of this book, numerical methods offer the only viable alternative for these cases."
+%"One very important method that engineers and applied mathematicians developed to overcome this dilemma was linearization."
+%"Although linearization remains a very valuable tool for engineering problem solving, there are cases where it cannot be invoked."
+%"However, as described in the previous section, many of the differential equations of practical significance cannot be solved using the analytical methods of calculus. Thus, the methods discussed in the following chapters are extremely important in all fields of engineering"
+%"The most popular RK methods are fourth order. As with the second-order approaches, there are an infinite number of versions."
 
-This paper investigates the potential of the PS method by examining three applications: the motion of a charged particle in a constant magnetic field, in a hyperbolic magnetic field, and in a dipole field. The detailed mathematical formulation for determining coefficients is provided and each applications is compared to both a fixed-step fourth-order Runge-Kutta (RK4) method and the adaptive-step Runge-Kutta (RK45) method in python and analyzing trajectories and kinetic energy drift which should ideally remain constant. \\
+%DraftFinn1976: This is premise of entire paper, "Topological and numerical techniques are used to show that the problem of trapped charged particle motion in a magnetic dipole field is insoluble. Similar results hold for motion in the earth's magnetic field and are of interest for radiation belt phenomena"
+%"It is shown that the complete adiabatic magnetic moment series is divergent and that due to the existence of homoclinic points the solutions to the equations of motion are too complicated to be written in closed form. As a consequence, there is currently no rigorous theoretical explanation for the empirical success of adiabatic orbit theory, and a completely satisfactory mathematical justification will be far from easy."
 
-First, to illustrate the power series methods and the concept of an auxiliary variable consider the following example
-    \begin{equation}
-        \frac{dy}{dx}=y\quad\quad y_0=1
-    \end{equation}
-To apply either the Picard or PS method, express $y$ as a power series
-    \begin{gather}
-            y=\sum_{j=0}^\infty y_jx^j=y_0+\sum_{j=1}^\infty y_{j}x^{j}\label{eq:1.1} \\    
-            \frac{dy}{dx}=\sum_{i=0}^\infty y_jjx^{j-1}
-    \end{gather}
-Which can now be substituted into the original ODE:
-    \begin{gather}
-            \sum_{j=0}^\infty y_iix^{i-1}=\sum_{j=0}^\infty y_jx^j\\
-            \sum_{j=-1}^\infty y_{j+1}(j+1)x^{j}=\sum_{j=0}^\infty y_jx^j\\
-            \sum_{j=0}^\infty y_{j+1}(j+1)x^{j}=\sum_{j=0}^\infty y_jx^j\\
-            y_{j+1}(j+1)x^{j}=y_jx^j\\
-            y_{j+1}=\frac{y_j}{(j+1)} \label{eq:1.2} 
-    \end{gather}
-Equation \ref{eq:1.2} can now be used to calculate the coefficients for Equation \ref{eq:1.1}. Computing the first few coefficients yields
-    \begin{equation}
-        y_1=1\quad,\quad y_2=\frac{1}{2}\quad,\quad y_3=\frac{1}{6}
-    \end{equation}
-which gives
-    \begin{equation}
-        y=1+x+\frac{x^2}{2!}+\frac{x^3}{3!}+\dots
-    \end{equation}
-resulting in the exact solution
-    \begin{equation}
-        y=e^x
-    \end{equation}
-This simple example demonstrates the utilization of a power series representation but has not yet introduced an auxiliary variable. Next, consider the following example
-        \begin{equation}\label{eq:1.6} 
-        \frac{dy}{dx}=y^2\quad\quad y_0=1
-    \end{equation}
-where again $y$ can be written as a power series
-    \begin{equation}
-        y=\sum_{j=0}^\infty y_jx^j=y_0+\sum_{j=1}^\infty y_{j}x^{j}\label{eq:1.3}    
-    \end{equation}
-Introducing an auxiliary variable $z$ allows for further simplification of the nonlinear term. The introduction of the auxiliary variable is the fundamental difference between the Picard iteration and the Parker-Sochacki method and allows for the use of this approach with non-linear terms.
-    \begin{equation}
-        z=y^2=\sum_{j=0}^\infty z_jx^j
-    \end{equation}
-Which is equivalent to
-    \begin{equation}\label{EQN:cauchy}
-        \begin{split}
-            z=&\left(\sum_{j=0}^\infty y_jx^j\right)\left(\sum_{j=0}^\infty y_jx^j\right)\\
-            =&\sum_{j=0}^\infty\left(\sum_{k=0}^jy_ky_{j-k}\right)x^j        
-        \end{split}
-    \end{equation}
-therefore
-    \begin{equation}
-        z_j=\sum_{k=0}^jy_ky_{j-k}
-    \end{equation}
-Since  
-    \begin{equation}
-        \frac{dy}{dx}=\sum_{j=0}^\infty (j+1)y_{j+1}x^j
-    \end{equation}
-this is set equal to Equation \ref{EQN:cauchy} giving
-    \begin{gather}
-        \sum_{j=0}^\infty (j+1)y_{j+1}x^j=\sum_{j=0}^\infty\left(\sum_{k=0}^jy_ky_{j-k}\right)x^j\\
-        y_{j+1}=\frac{1}{(j+1)}\left(\sum_{k=0}^jy_ky_{j-k}\right)\label{eq:1.5}
-    \end{gather}
-Equation \ref{eq:1.5} now provides the necessary coefficients to compute the solution. Calculating the first few coefficients gives
-    \begin{equation}
-        \begin{split}
-            y_1=y_0y_0=1\\
-            y_2=\frac{1}{2}\left(y_0y_1+y_1y_0\right)=1\\
-            y_3=\frac{1}{3}\left(y_0y_2+y_1y_1+y_2y_0 \right)=1
-        \end{split}
-    \end{equation}
-Where each of the coefficients can be computed once and used as needed. Utilizing these coefficients in Equation \ref{eq:1.3} results in
-    \begin{equation}
-        y=1+x+x^2+x^3+\dots=\frac{1}{1-x}
-    \end{equation}
-which is the exact solution to Equation \ref{eq:1.6}. These two examples demonstrate how the PS method expands on the principles of the Picard iteration by utilizing auxiliary variables and reducing non-linear equations into coupled ODEs that can be solved using algebraic operations. The multiplication of the two summations in Equation \ref{EQN:cauchy} is what is known as a Cauchy Product and has the following form
-    \begin{equation}
-        \left(\sum_{i=0}^\infty a_i\right)\left(\sum_{j=0}^\infty b_j\right)=\sum_{k=0}^\infty\sum_{l=0}^ka_lb_{k-l}
-    \end{equation}
-and will appear in many applications of PS method. \\
+%Butcher2016: "Since the advent of digital computers, fresh interest has been focused on Runge–Kutta methods, and a large number of research workers have contributed to recent extensions to the theory, and to the development of particular methods. Although early studies were devoted entirely to explicit Runge–Kutta methods, interest has now moved to include implicit methods, which have become recognized as appropriate for the solution of stiff differential equations."
 
-The next several sections will examine applications of this method for an arbitrary particle in different magnetic field configurations. The intent was not to optimize each of the integration methods and so while some adjustments are made to tolerances and some comments are provided on computation time, this should be taken as a proof of concept. 
-\section{Constant Magnetic Field}
-This first application will examine the motion of a charged particle in a constant magnetic field. This serves as a foundational application due to its simple, non-trivial nature, allowing for straightforward analysis of the well-understood physics of cyclotron motion governed by the Lorentz Force Law,  
-    \begin{equation} \label{eq:2.4} 
-        F=m\frac{d\mathbf{v}}{dt}=q\mathbf{v}\times\mathbf{B}
-    \end{equation}
-where
-    \begin{equation}  \label{eq:2.1}
-        \frac{d\mathbf{r}}{dt}=\mathbf{v}
-    \end{equation}
-Letting $\frac{q}{m}=1$ and defining the initial conditions as 
-    \begin{equation}
-        \begin{split}
-            \mathbf{v}(t=0)=\mathbf{v}_0\\
-            \mathbf{r}(t=0)=\mathbf{r}_0\\
-        \end{split}
-    \end{equation}
-where $\mathbf{r}$ and $\mathbf{v}$ are the three-dimensional position and velocity vectors, the power series can now be determined.
-\subsection{Determining the Power Series Coefficients}
-While expressions derived in detail are limited to the $x$-component coefficients, this method can easily be expanded to encompass all other axes. Begin by expressing velocity and position as a power series expansion,
-    \begin{equation}\label{eq:2.2}    
-        x=\sum_{i=0}^\infty x_it^i 
-    \end{equation}
-    \begin{equation}\label{eq:2.3}  
-        v_x=\sum_{j=0}^\infty v_{xj}t^j    
-    \end{equation}
-and inserting these into the $x$-component of Equation \ref{eq:2.1} results in
-    \begin{equation}
-        \begin{split}
-            \frac{d}{dt}\left(\sum_{i=0}^\infty x_it^i\right)=& \sum_{j=0}^\infty v_{xj}t^j\\ 
-            \sum_{i=0}^\infty ix_it^{i-1}=&\sum_{j=0}^\infty v_{xj}t^j\\ 
-        \end{split}
-    \end{equation}
-In order to develop useful expressions for the coefficients, $t$'s must be of the same order; therefore, the substitution $i=j+1$ is made   
-    \begin{equation}
-        \begin{split}
-            \sum_{j=-1}^\infty (j+1)x_{j+1}t^{j}=&\sum_{j=0}^\infty v_{xj}t^j\\ 
-        \end{split}
-    \end{equation}
-Note that for the summation on the left-hand side, $j=-1$ will result in 0; therefore, with no loss of generality, the summation index can begin at zero. Thus allowing for an expression for the $x$ coefficients
-    \begin{equation}\label{eqn: ith_x_constantb}
-        x_{j+1}=\frac{v_{xj}}{j+1}
-    \end{equation}
-which allows us to express Equation \ref{eq:2.2}, as
-    \begin{equation}
-        {x=\,x_0 + \sum_{j=0}^\infty\frac{v_{xj}}{j+1} t^{j+1}}\\ 
-    \end{equation}
-Following a similar procedure for velocity, taking the $x$ component of Equation \ref{eq:2.4} and normalizing with respect to $q/m$ then expressing $v_y$ and $v_z$ as power series 
-    \begin{equation}
-        \begin{split}
-        \frac{dv_x}{dt}=&v_yB_z-v_zB_y\\
-        \frac{d}{dt}\left(\sum_{j=0}^\infty v_{xj}t^j\right)=&\sum_{k=0}^\infty (v_{yk}B_z-v_{zk}B_y)t^k\\  
-        \sum_{j=0}^\infty jv_{xj}t^{j-1}=&\sum_{k=0}^\infty (v_{yk}B_z-v_{zk}B_y)t^k  
-        \end{split}
-    \end{equation}
-To match $t$ coefficients, let $j=k+1$ 
-    \begin{equation}
-        \begin{split}  
-        \sum_{k=-1}^\infty (k+1)v_{x(k+1)}t^{k}=&\sum_{k=0}^\infty (v_{yk}B_z-v_{zk}B_y)t^k  
-        \end{split}
-    \end{equation}
-Again, noting on the left summation that $k=-1$ results is zero; with no loss to generality, the summations index can begin at $k=0$ and thus allowing for an expression for the $v_x$ coefficients
-    \begin{equation}\label{eqn: ith_v_constantB}
-        v_{x(k+1)}=\frac{1}{k+1} (v_{yk}B_z-v_{zk}B_y) 
-    \end{equation}
-which allows us to express Equation \ref{eq:2.3} as
-    \begin{equation}
-            {v_x=v_{x0}+\sum_{k=0}^\infty\frac{1}{k+1} (v_{yk}B_z-v_{zk}B_y)t^{k+1}}
-    \end{equation}
-To summarize, and extending this methodology to all three dimensions, the following six equations govern the motion of a particle in a magnetic field utilizing the Parker-Sochacki method.
-    \begin{gather}
-        x=\,x_0 + \sum_{i=0}^\infty\frac{v_{xi}}{i+1} t^{i+1}\\
-        y=\,y_0 + \sum_{i=0}^\infty\frac{v_{yi}}{i+1} t^{i+1}\\
-        z=\,z_0 + \sum_{i=0}^\infty\frac{v_{zi}}{i+1} t^{i+1}\\
-        v_x=v_{x0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{yi}B_z-v_{zi}B_y)t^{i+1}\\
-        v_y=v_{y0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{zi}B_x-v_{xi}B_z)t^{i+1}\\
-        v_z=v_{z0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{xi}B_y-v_{yi}B_x)t^{i+1}
-    \end{gather}
-Each $i^{th}$ term from Equation \ref{eqn: ith_x_constantb} and Equation \ref{eqn: ith_v_constantB}, and the respective equations for the other axes, is computed algebraically from the previous ones without the need for further differentiation. Starting from the initial values, a complete set of data points can be formulated.\\
-\subsection{Numerical Comparison}
-The constant magnetic field provides a valuable baseline for validating numerical methods before progressing to more complex magnetic field configurations. For ease, $q/m$ remains set to unity and a unit-less convention is utilized with a constant magnetic field in the z-direction and an initial velocity in the $v_y$-direction is applied:
-    \begin{equation}
-        \begin{tabular}{ l l l }
-            x_0=0 & v_{x_0}=0 &B_x=0 \\ 
-            y_0=0 & v_{y_0}=1  &B_y=0  \\  
-            z_0=0 & v_{z_0}=0& B_z=0.1\\
-        \end{tabular}
-    \end{equation}
-Initially, a comparison of the PS and RK4 method was completed, both at fourth order with a fixed time step of 0.63, which equivalent to one hundred steps based on the gyro period of the particle,
-    \begin{equation}
-        T=\frac{2\pi m}{|q|B}
-    \end{equation}
-To minimize errors in calculations, an initial time step should be selected which is much smaller than this period, for this scenario 100 steps proved to be conservative\cite{chen}\cite{bird}. Note that the fourth order comparisons are not a one-to-one comparison as the methods are computing different approximations, this merely served as a starting point.\\
+A particle in a dipole magnetic field with velocity components both parallel and perpendicular to the magnetic field will undergo multiple simultaneous periodic motions: gyration about the field line (gyro), oscillation along it (bounce), and the slow azimuthal motion across field lines (drift) \cite{Northrop1963, Dragt1965, Walt1994}. In strongly inhomogeneous magnetic fields, where all three motions are present, the adiabatic invariants are the basis for the guiding center approximation, which is valid in regimes where the gyroradius, $r_g$, remains small compared to the length scale over which the magnetic field varies, $L_B \equiv {B}/{|\nabla B|}$, such that $\varepsilon \equiv r_g/L_B \ll 1$ \cite{Northrop1963}. Their long-time behavior is central to the understanding of trapped-particle dynamics over timescales long compared to the gyroperiod \cite{DragtFinn1976}.
 
-Also included in this analysis is the trajectory of an adaptive step RK45 method utilizing \textit{solve$\_$ivp} in python, which numerically integrates the problem utilizing the RK45 method \cite{scipy}. As see in Figure \ref{fig: usecase1-1, trajectory}, all trajectories match the analytical solution very well with near identical errors in trajectory for the RK4 and PS method but a lower trajectory error for the RK45 method, Figure \ref{fig: usecase1-1, trajectory error}. Early analysis utilized the built-in tolerance levels for \textit{solve$\_$ivp} which are 1e-3 for the relative tolerance and 1e-6 for the absolute tolerance \cite{scipy}; however, energy drift errors were on the order of $10^{-1}$ when used in this application and the tolerances were manually updated to 1e-12 and 1e-14, respectively for this analysis. 
-        \begin{figure}[H]
-            \centering
-            \begin{minipage}[t]{0.48\textwidth}
-                \centering
-        \includegraphics[width=.9\textwidth]{Images/ConstantB/PS_Order4_trajectory_comparison_UseCase1-1.png}
-        \caption{2D trajectory of a charged particle in a constant magnetic field along the $z$-axis, computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-step fourth order, RK4, and adaptive, RK45) compared to the analytical solution.}
-        \label{fig: usecase1-1, trajectory}
-            \end{minipage}%
-            \hfill
-            \begin{minipage}[t]{.48\textwidth}
-                \centering
-                \includegraphics[width=0.9\textwidth]{Images/ConstantB/PS_Order4_trajerror_comparison_UseCase1-1.png}
-                \caption{2D trajectory error of a charged particle in a constant magnetic field along the $z$-axis, computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-step fourth order, RK4, and adaptive, RK45) compared to the analytical solution.}
-                \label{fig: usecase1-1, trajectory error}
-            \end{minipage}
-        \end{figure}
-Additionally, when analyzing at the relative energy error over time, the PS and RK4 methods exhibit near identical error drift, while the RK45 method was lower, Figure \ref{FIG: ConstantB_energyerror_1cycle}.
-         \begin{figure}[H]
-            \centering
-            \captionsetup{width=0.48\textwidth}
-            \includegraphics[width=0.4\textwidth]{Images/ConstantB/PS_Order4_energy_comparison_UseCase1-1.png}
-            \caption{Energy error of a charged particle in a constant magnetic field along the $z$-axis, computed using the Parker–Sochacki method and fixed-step Runge-Kutta, both to 4$^{\text{th}}$ order.}
-            \label{FIG: ConstantB_energyerror_1cycle}
-        \end{figure}
-           
-Next, various PS orders were analyzed over a time scale equivalent to ten orbits, while maintaining a time step of 0.63. Allowing for increased PS orders, reduced both the errors in the trajectory, Figure \ref{FIG:ConstantB_trajerror_stacked}, and the errors in the energy drift, Figure \ref{FIG:ConstantB_engerror_stacked}, by several orders of magnitude, while at times approaching machine error for higher order PS coefficients, with minimal impact to the computation time.
-        \begin{figure}[H]
-            \centering
-            \begin{minipage}[t]{0.48\textwidth}
-                \centering
-                \includegraphics[width=\textwidth]{Images/ConstantB/PS_StackedOrders_trajerror_comparison_UseCase1-1.png}
-                \caption{2D trajectory error of a charged particle in a constant magnetic field along the $z$-axis, computed using the Parker–Sochacki method at various orders and both a fixed-step 4th Order and adaptive step Runge-Kutta.}
-                \label{FIG:ConstantB_trajerror_stacked}
-            \end{minipage}%
-            \hfill
-            \begin{minipage}[t]{0.48\textwidth}
-                \centering
-                \includegraphics[width=\textwidth]{Images/ConstantB/PS_StackedOrders_energy_comparison_UseCase1-1.png}
-                \caption{Energy drift of a charged particle in a constant magnetic field along the $z$-axis, computed using the Parker–Sochacki method at various orders and both a fixed-step 4th Order and adaptive step Runge-Kutta.}
-                \label{FIG:ConstantB_engerror_stacked}
-            \end{minipage}
-        \end{figure}
-        
-    
-This application demonstrate long term stability in the energy drift and more precise calculations due to the higher order terms in the PS method. Even with higher order terms, in this application, the PS method reliably exhibited comparable computation times as the RK4 method. The RK45 method, while consistently the fastest, also exhibited significantly higher error drift over time unless adjustments to the built in tolerances were made allowing for a competitive error drift, which is what was included in the above analysis. Other variations of this analysis, such as reducing the step size down to .05, and examining the helical motion in three dimensions were explored demonstrating similar trends as those summarized above. Lastly, while the RK4 drift error can be decreased further it requires a smaller time step, significantly increasing the computation costs which for longer calculations becomes computationally significant. 
+Although the assumption of adiabatic invariance is sufficient for addressing many problems in trapped-particle dynamics, not all problems of interest satisfy this assumption, in which case numerical integration of the exact equations of motion is required. Examples include the tracing of high-energy protons and electrons in radiation belts, where the gyroradius is no longer small compared with the scale over which the field varies \cite{Yugo2001, Yugo2007}, and the chaotic scattering of relativistic protons in the inner magnetosphere, where the motion is nonadiabatic, and its outcome depends sensitively on initial conditions \cite{Meseguer2025}. The former studies \cite{Yugo2001, Yugo2007} used a symplectic Gauss--Legendre Runge--Kutta method that bounded the energy errors over $10^7$ steps; the latter \cite{Meseguer2025} used a ninth-order Runge--Kutta method with an adaptation from \cite{Calvo2006} that enforces the invariants at each step and reported conservation of energy and canonical momentum to near machine precision over approximately $10^2$ bounces. In both cases, the conservation of the exact invariants relies on structure engineered into the integrator.
 
-\section{Hyperbolic Magnetic Field}
-A hyperbolic magnetic field introduces non-uniformity and non-linearity in a magnetic field environment allowing for the exploration of more practical problems in space physics where sharper changes in the equations can occur over shorter time scales. The field can be representative of the Earth's Magnetotail current sheet, magnetic reconnection, and plasma mirrors [\textcolor{red}{blue textbook reference}]. Unlike a constant magnetic field, the motion of a particle is no longer symmetric and can lead to chaotic behavior where particle trajectories can range from extremely trochoidal to meandering, this behavior is sensative to the combination of position, velocity and magnetic field strength \cite{astrom}. This allows for a more stressing analysis on numerical methods. This application will specifically explore particles that follow the Lorentz Force Law,
-    \begin{equation} 
-        F=m\frac{d\mathbf{v}}{dt}=q\mathbf{v}\times\mathbf{B}
-    \end{equation}
-where
-    \begin{equation}  
-        \frac{d\mathbf{r}}{dt}=\mathbf{v}
-    \end{equation}
-    \begin{equation}
-        \mathbf{B}=\begin{pmatrix}
-            0\\0\\\tanh (y)
-        \end{pmatrix}
-    \end{equation}
-For ease, the problem is normalized to $q/m$ and the initial conditions are defined as 
-    \begin{equation}
-        \begin{split}
-            \mathbf{v}(t=0)=\mathbf{v}_0\\
-            \mathbf{r}(t=0)=\mathbf{r}_0\\
-        \end{split}
-    \end{equation}
-where $\mathbf{r}$ and $\mathbf{v}$ are the 3 dimensional position and velocity vectors.
-\subsection{Determining the Power Series}
-Similar to the first application with constant $\mathbf{B}$,
-    \begin{equation}    
-        x=\sum_{i=0}^\infty x_it^i 
-    \end{equation}
-    \begin{equation}
-        v_x=\sum_{j=0}^\infty v_{xj}t^j    
-    \end{equation}
-but now an additional term must be introduced for magnetic field which is no longer constant, where an auxiliary variable, $a$, can be introduced
-    \begin{gather}\label{equation: Hyper Bz Basic}
-        B_z=\sum_{k=0}^\infty B_{z,k}t^k\\
-        \frac{dB_z}{dt}=[1-\tanh^2(y)]\frac{dy}{dt}=\underbrace{(1-B_z^2)}_a v_y\\
-        \frac{dB_z}{dt}=av_y
-    \end{gather}       
-therefore,
-    \begin{gather}
-        \frac{da}{dt}=-2B_z\frac{dB_z}{dt}\\
-        a=\sum_{l=0}^\infty a_lt^l
-    \end{gather}
-Where at $t=0$, the initial conditions are
-    \begin{equation}
-        \begin{split}
-            B_{z0}=\tanh(y)\\
-            a_0=1-B_{z0}^2
-        \end{split}
-    \end{equation}
-Examining the auxillary variable, $a$, it can be shown that
-    \begin{equation}
-        \begin{split}
-            a=&\sum_{l=0}^\infty a_lt^l\\
-            \frac{da}{dt}=&\sum_{l=0}^\infty la_lt^{l-1}\\
-            -2B_z\frac{dB}{dt}=&\sum_{l=0}^\infty la_lt^{l-1}\\
-            -2\left(\sum_{m=0}^\infty B_{z,m}t^m\right)\left(\sum_{k=0}^\infty kB_{z,k}t^{k-1}\right)=&\sum_{l=0}^\infty la_lt^{l-1}
-            \end{split}
-    \end{equation}
-when $k=0$ the left side is zero so with no loss to generality the summation index can begin at $k=1$ and let $j=k-1$. Applying similar logic to the right and letting $l-1=i$ gives            
-    \begin{equation}
-        \begin{split}            
-            -2\left(\sum_{m=0}^\infty B_{z,m}t^m\right)\left(\sum_{j=0}^\infty (j+1)B_{z,j+1}t^{j}\right)=&\sum_{i=0}^\infty (i+1)a_{i+1}t^{i}\\
-            -2\sum_{i=0}^\infty\sum_{j=0}^i(j+1)B_{z,i-j}B_{z,j+1}t^{i}=&\sum_{i=0}^\infty (i+1)a_{i+1}t^{i}\\
-        \end{split}
-    \end{equation}
-    \begin{equation}\label{eqn: ith a hyper}
-        a_{i+1}=-\frac{2}{(i+1)}\sum_{j=0}^i(j+1)B_{z,i-j}B_{z,j+1}
-    \end{equation}
- Equation \ref{eqn: ith a hyper} provides the necessary framework to compute the auxiliary coefficients for $a$. Examining $\mathbf{B_z}$, and following a similar mathematical progression, 
-    \begin{equation}
-        \begin{split}
-            \frac{dB_z}{dt}=&\frac{d}{dt}\left(\sum_{k=0}^\infty B_{z,k}t^k\right)\\
-            av_y=&\sum_{k=0}^\infty kB_{z,k}t^{k-1}\\
-            \left(\sum_{l=0}^\infty a_lt^l\right)\left(\sum_{m=0}^\infty v_{y,m}t^m\right)=&\sum_{k=0}^\infty kB_{z,k}t^{k-1}\\                  
-            \sum_{n=0}^\infty \left(\sum_{j=0}^n a_jv_{y,n-j}\right)t^n=&\sum_{k=0}^\infty kB_{z,k}t^{k-1}\\
-        \end{split}
-    \end{equation}
-which reduces to the following
-    \begin{equation}\label{equation:Hyper Bz Coefficients}
-            B_{z,i+1}=\frac{1}{i+1}\sum_{j=0}^i a_jv_{y,i-j}
-    \end{equation}
-Equation \ref{equation:Hyper Bz Coefficients} gives the necessary framework to calculate any number of coefficients allowing for a full magnetic field representation of  
-    \begin{equation}\label{eqn_ith_B_hyper}
-        B_z=B_{z,0}+\sum_{i=0}^\infty \frac{t^{i+1}}{i+1}\sum_{j=0}^i a_jv_{y,i-j}
-    \end{equation}
+Another example is the long-time conservation of the magnetic moment itself and the implications for the guiding center approximation. A seminal analysis \cite{DragtFinn1976} concluded that the use of adiabatic invariants to predict the long-time behavior of radiation belt particles has no rigorous justification, mathematical or numerical, and expected round-off errors to defeat any numerical test. Whether the magnetic moment remains effectively conserved over long timescales is an open question.
+%Another application whof high precision and long-time ... is in the evaluation of the guiding center approximation. DragtFinn concluded that there is currently no rigorous mathematical or numerical justification for the use of adiabatic invariants to predict long-time behavior of radiation belt particles.
 
-The remaining equations, which were derived in detail in the previous sections, are summarized as follows
-    \begin{gather}
-        x=\,x_0 + \sum_{i=0}^\infty\frac{v_{xi}}{i+1} t^{i+1}\\
-        y=\,y_0 + \sum_{i=0}^\infty\frac{v_{yi}}{i+1} t^{i+1}\\
-        z=\,z_0 + \sum_{i=0}^\infty\frac{v_{zi}}{i+1} t^{i+1}\\
-        v_x=v_{x0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{yi}B_{zi})t^{i+1}\\
-        v_y=v_{y0}+\sum_{i=0}^\infty\frac{1}{i+1} (-v_{xi}B_{zi})t^{i+1}\\
-        v_z=v_{z0}
-    \end{gather}
-Each $i^{th}$ term from Equation \ref{eqn: ith a hyper} and Equation \ref{equation:Hyper Bz Coefficients}, and the respective equations for the other axes, is computed algebraically from the previous ones without the need for further differentiation and providing a complete set of equations that govern the trajectory of a particle in a hyperbolic magnetic field.
+%Meseuger2025: "When modeling particles in the magnetosphere, the guiding center approximation has often been used in the past because it reduces the required computational time, see Ref. [14] and references therein. However, here, we need to solve the full dynamics of the particles, modeling its three main dynamical components, gyration, bounce and azimuthal drift, because we aim to analyze the impact of the nonlinear effects and the presence of strong sensitivity on initial conditions when the model goes beyond the pure dipolar field and both high and low energies are possible. Therefore, we will present a robust numerical scheme with reduced numerical dissipation, which is suitable for this analysis."
+% "The typical timescales for protons of around 100 MeV trapped in the inner belt region are a gyration time of 10−2 s, a bouncing period of 0.25 s , and a drift period of around 30 s [22]. Hence, we have set a total integration time of T = 30 s as an arbitrary limit to explore the phase space."
+%"In all the cases explored in this work, such a projection method led to phase space integration orbits that numerically preserve energy (and angular momentum, in the dipolar model) almost to machine precision."
 
-\subsection{Numerical Comparison}
-Given the sharp behavior exhibited by a hyperbolic magnetic field, a smaller step size of 0.001 was initially used for the presented analysis and simulations ran for total time of 100. For ease, the problem is normalized to $q/m$ and a unit-less convention is utilized.  Lastly, an $\alpha$ term was introduced to easily scale the magnetic field, while the analysis presented utilized $\alpha=1$, some brief observations on initial observations will be provided at the end of the section on variations of $\alpha$. The remaining initial conditions used were:
-    \begin{equation}
-        \begin{tabular}{ l l l }
-            x_0=0 & v_{x_0}=0 &B_x=0 \\ 
-            y_0=.5 & v_{y_0}=.1  &B_y=0  \\  
-            z_0=0 & v_{z_0}=.5& B_z=\tanh(\alpha y)\\
-        \end{tabular}
-    \end{equation}
-The PS method was implemented to allow for an adaptive order that would break the loop at a tolerance of 1e-20, which resulted in a PS order of 6. As seen in Figure \ref{FIG:Hyper_Traj_100s}, both RK methods and the PS method exhibit similar trajectories over the simulation and maintain low energy drift, Figure \ref{FIG:Hyper_Error_100s}, both exhibiting the expected trochoidal sort of behavior 
+Addressing such problems numerically places substantial demands on the integrator. In each example, trajectories must remain accurate over many gyroperiods so that numerical error is not mistaken for physical effects. For the magnetic moment, the demands are the most stringent; conservation must be demonstrated over multi-year time scales, comparable to the lifetimes of trapped radiation belt particles. The guiding center approximation cannot test what it presupposes; only the full trajectory lets the magnetic moment evolve freely. Additionally, the changes in the magnetic moment at successive equatorial crossings depend on the relative phase of the gyro and bounce motions, and their slow accumulation degrades the invariant in a way that short-time error metrics cannot detect \cite{DragtFinn1976, Dragt1965}. Therefore, the magnetic moment's evolution over time has physical meaning only if it can be distinguished from numerical drift. Preserving the exact invariants of the magnetic dipole problem requires high precision before the magnetic moment can be meaningfully studied over long timescales. This work establishes the necessary foundation with the PS method, showing that it conserves the exact invariants to high precision without auxiliary constraints, benchmarking it against standard RK-based integrators in the static magnetic dipole field. The long-time behavior of the magnetic moment itself, which this foundation is built to support, is deferred to a follow-on study. 
 
-\begin{figure}[H]
-    \centering
-    \begin{minipage}[t]{0.4\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{Images/hyper/Hyper_traj_qm1_alpha1_100s_PS_Order5.png}
-        \caption{2D trajectory of a charged particle in a hyperbolic magnetic field computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-step fourth order, RK4, and adaptive, RK45).}
-        \label{FIG:Hyper_Traj_100s}
-    \end{minipage}%
-    \hfill
-    \begin{minipage}[t]{0.45\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{Images/hyper/Hyper_energydrif_qm1_alpha1_100s_PS_Order5.png}
-        \caption{Energy drift of a charged particle in a hyperbolic magnetic field computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-st
-        ep fourth order, RK4, and adaptive, RK45).}
-        \label{FIG:Hyper_Error_100s}
-    \end{minipage}
-\end{figure}
+The remainder of this paper is organized as follows. In Section~\ref{SEC:numerical methods}, we describe the numerical methods compared in this work and the criteria of accuracy, stability, and computational efficiency used to assess them. In contrast to the RK methods, analytic calculations are required before the PS method can be applied numerically; in Appendix~\ref{sect:examples} we provide a brief introduction to the PS formalism, including three short examples of increasing complexity. In Section~\ref{sect:implementation}, we provide details on how the ODE solvers are implemented. In Section~\ref{sec:dipole}, we derive the PS recurrence relations for a charged particle in a static magnetic dipole field. In Section~\ref{SEC:results}, we benchmark the methods, first at a common fixed time step and then in a case study at a minimum target accuracy. From these results, we demonstrate that the PS method conserves the exact invariants of the static magnetic dipole problem, the kinetic energy and the canonical momentum, with higher precision than both conventional and symplectic RK methods, without auxiliary constraints and with similar computational efficiency. Section~\ref{SEC:Conclusions} summarizes our conclusions.
 
-        
-    
-For increasing magnetic fields, large $\alpha$, a smaller time step was required to maintain accuracy. In particular, it was observed that smaller time steps were required for the PS method sooner than they were required for the RK4 method as the magnetic field was increased. This is likely due to how each method approximates in sharp regions, one approximating the solution with a higher order polynomial, which can become unstable in the presence of sharp gradients, while the other uses a lower-order approximation that is more stable but less accurate. However, as the PS method only requires addition, subtraction and multiplication, increasing step size for PS method did not have the same computational penalty that RK approximations may face with decreased step size. For example, the following run was conducted for $\alpha=10$  and the following initial parameters.\\
+%Dragt1965:"The numerical results of the last section show that α and therefore J are remarkably constant from one equatorial crossing to the next. But this does not really answer the important question: what happens to J after many equatorial crossings?" Note that J is the "gyro-action"....some difficult-to-follow terminology in the '65 paper.
+
+%DragtFinn1976:"(the first term in the magnetic moment series and the expression usually assumed to be constant in practical calculations) typically changes by 1%–50% between equatorial crossings. The truncated magnetic moment series Γ, with a truncation chosen to minimize variations, typically varies by 1%–0.01%."
+%"accumulate neither additively nor randomly but instead must be highly self cancelling."
 
 
-\begin{equation}
-        \begin{tabular}{ l l l }
-            x_0=0 & v_{x_0}=.1 &B_x=0 \\ 
-            y_0=.25 & v_{y_0}=0  &B_y=0  \\  
-            z_0=0 & v_{z_0}=0& B_z=\tanh(\alpha y)\\
-        \end{tabular}
-    \end{equation}
-\begin{figure}[H]
-    \centering
-    \begin{minipage}[t]{0.4\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{Images/hyper/Hyper_traj_qm1_alpha10_250s_PS_Order5.png}
-        \caption{2D trajectory of a charged particle in a hyperbolic magnetic field computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-step fourth order, RK4, and adaptive, RK45).}
-        \label{FIG:Hyper_Traj_100s}
-    \end{minipage}%
-    \hfill
-    \begin{minipage}[t]{0.45\textwidth}
-        \centering
-        \includegraphics[width=\textwidth]{Images/hyper/Hyper_energydrif_qm1_alpha10_250s_PS_Order5.png}
-        \caption{Energy drift of a charged particle in a hyperbolic magnetic field computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-step fourth order, RK4, and adaptive, RK45).}
-        \label{FIG:Hyper_Error_100s}
-    \end{minipage}
-\end{figure}
+\section{Numerical Methods}\label{SEC:numerical methods}
 
-For weaker magnetic field, smaller $\alpha$, all methods performed extremely well by both maintaining energy conservation and minimizing computation costs. The adaptive RK45 remained the fastest, though the internal tolerances had to be adjusted to account and correct for noticeable drift in the trajectory when initially using the default tolerances.   \\
+In standard RK methods, derivative estimates are sampled at selected points, called stages, which are combined into a weighted average to estimate the increment in the solution at each time step. The number of stages and the chosen weights determine the order of the method. While many variations of this method exist, the fourth-order Runge--Kutta (RK4) method is the most widely used \cite{Chapra2021, Walters2022} because it provides a good balance between accuracy and computational runtime. Because RK methods approximate the solution incrementally from local derivative estimates, their step sizes are constrained by numerical stability and accuracy requirements, particularly in stiff or rapidly varying systems, where very small time steps may be necessary. For such problems, the adaptive Runge--Kutta Dormand--Prince (RK45) method, which adjusts the time step size based on a local error estimate, can be used \cite{Chapra2021, Dormand1980}. For problems where long-time stability or the preservation of physical invariants is critical, volume-preserving integrators are often used. The second-order Boris algorithm, distinct from RK methods, is the most widely used of these and shows bounded energy error over long integrations \cite{Qin2013, Ripperda2018}. However, because it is second-order, it has accuracy limitations for precise long-time particle trajectory applications \cite{Qin2013, Ripperda2018, Winkel2015}. Therefore, we include the fourth-order symplectic Gauss--Legendre Runge--Kutta (RKG) method for comparison, an implicit RK method that preserves the system's Hamiltonian structure over extended integration periods while retaining higher-order trajectory accuracy \cite{Iserles1996, Yugo2001, Calvo2003}. These comparisons are not meant to be exhaustive; higher-order RK methods \cite{Walters2022, Meseguer2025}, variations of the Boris method \cite{Wang2025}, and other improved trajectory-integration schemes \cite{Soni2021, Brizard2022, Huang2022, Umeda2023} remain active areas of research in this field, each implementing different mechanisms or constraints for maintaining accuracy and stability. Our intent is to evaluate a method that does not require such modifications but instead conserves invariants through the accuracy of the solution itself, rather than through constraints engineered into the integrator. 
+
+%Chapra2021: "25.3.3 Fourth-Order Runge-Kutta Methods: The most popular RK methods are fourth order. As with the second-order approaches, there are an infinite number of versions. The following is the most commonly used form, and we therefore call it the classical fourth-order RK method..."
+%"To this point, we have presented methods for solving ODEs that employ a constant step size. For a significant number of problems, this can represent a serious limitation. For example, suppose that we are integrating an ODE with a solution of the type depicted in Fig. 25.20. For most of the range, the solution changes gradually. Such behavior suggests that a fairly large step size could be employed to obtain adequate results. However, for a localized region from x = 1.75 to x = 2.25, the solution undergoes an abrupt change. The practical consequence of dealing with such functions is that a very small step size would be required to accurately capture the impulsive behavior. If a constant step-size algorithm were employed, the smaller step size required for the region of abrupt change would have to be applied to the entire computation. As a consequence, a much smaller step size than necessary—and, therefore, many more calculations—would be wasted on the regions of gradual change."
+
+%Walters2022: "The most famous of these is the classical fourth-order, four-stage method in the text by Atkinson [3, p. 371]. An improved approach, which still retains the relative simplicity of ERK methods, is provided by the family of Runge–Kutta–Fehlberg methods [3, p. 376], in which pairs of RK methods are used together to create explicit.."
+
+%Qin2013:"We show that the Boris algorithm conserves phase space volume, even though it is not symplectic. The global bound on energy error typically associated with symplectic algorithms still holds for the Boris algorithm, making it an effective algorithm for the multi-scale dynamics of plasmas."
+%"It is necessary to point out that even though the energy error is bounded for the Boris algorithm, there is no guarantee that the error in the phase of a periodic motion numerically calculated is bounded for all time."
+%"For systems with periodic orbits, such as the numerical examples studied in this paper, the phase error of the Boris algorithm will grow with time linearly, which indicates an error in the frequency of the periodic motion."
+%"...symplectic algorithms and volume-preserving algorithms only bound the energy error for all time, but for most cases do not bound other invariants of the dynamics, such as the angular momentum for a system with angular symmetry."
+
+%Winkel2015:"Several explicit alternatives to the Boris method have been proposed... All of them are second-order accurate and apparently no higher-order methods based on the original Boris approach exist. Especially for applications such as trajectory integration in particle accelerators, space-weather studies, high-intensity laser-plasma interaction, and fusion vessel simulations, where high precision has to be maintained over long physical simulation times, these are desirable, though."
+
+%Ripperda2018: "At each time step, the Boris, Vay, and implicit schemes introduce a small phase lag that accumulates over time. In our case, the gyration is shifted by ∼0.2 radians after 100 turns."
+%"...all methods eventually deviate from the correct position, velocity, and momentum,"
+
+%Iserles1996: See Page 47 for it as implicit method Calvo also talks about it so in theory we could drop this one if it's too busy with citations.
+
+%Yugo2001: "We tested the symplectic integrator in the Earth's dipole field for typical high energy charged particles in the radiation belt, and showed the advantages of the new method. We believe that this method is useful for the numerical simulation of the Earth's or other planets' radiation belts in which the acceleration mechanisms have not been understood well.
+
+%Calvo2003: "RKG methods with constant step sizes are symplectic integrators, i.e., preserve the symplectic structure of space phase for arbitrary Hamiltonian functions." 
+
+%"In conclusion, RKG methods, in spite of their implicitness, are good potential candidates for geometric integration since they retain all the advantages of symplectic integrators even in a variable stepsize integration based on a Poincare regularization technique."
+
+The Parker--Sochacki method, a power-series approach for solving initial value problems, builds on the classical Picard method \cite{Parker1996}. In the Picard method, the differential equation is first written in integral form, and the solution is approximated iteratively by substituting the previous approximation into this integral \cite{Boyce2017}. Each iteration refines the approximation from the previous one, giving a power series expansion of the exact solution when one exists. The Picard method applies to ODEs of the form $d\mathbf{x}/dt=f(\mathbf{x},t)$ and converges to the exact solution on intervals where the solution possesses a valid power series representation. In special cases, the resulting series is a known closed form; in general, the series itself is the solution. If the solution has no such expansion, the method fails to produce a solution in any form.
+
+%Boyce2017:"One method of showing that the integral equation (3) has a unique solution is known as the method of successive approximations or Picard’s iteration method. In using this method, we start by choosing an initial function φ0, either arbitrarily or to approximate in some way the solution of the initial value problem. The simplest choice is φ0(t) = 0;  then φ0 at least satisfies the initial condition in equations (2), although presumably not the differential equation. The next approximation φ1 is obtained by substituting φ0(s) for φ (s) in the right-hand side of equation (3) and calling the result of this operation φ1(t)."
+
+While the Picard method is theoretically powerful and offers high-order accuracy, its practical use has historically been limited by the algebraic complexity of performing successive integrations for nonlinear, nonpolynomial, or coupled ODE systems to obtain a power series representation \cite{Ansari2024, Leal2015, Rudmin1998}. The PS method addresses these limitations by using auxiliary variables and Cauchy product identities to rewrite the nonlinear components of an ODE, thereby reducing algebraic complexity and giving recursive approximations \cite{Parker1996, Guenther2019}. This approach preserves the underlying requirement that the exact solution be analytic for the series to converge, but it makes the construction of that power series tractable for a wide range of nonlinear systems. Consequently, the step size is directly linked to the convergence rate of the power series representation as illustrated in \cite{Parker1996}, enabling the use of larger, analytically informed time steps. This contrasts with RK methods, where step sizes are typically determined by numerical stability constraints and local error estimates rather than by the analytic properties of the solution.
+
+%Ansari2024: "The Picard method is a recursive algorithm commonly used to solve initial value problems. However, the main challenge of this method is computing the integral of the complex and nonlinear function."
+%"this method can become complicated or unsolvable when dealing with nonlinear cases due to the calculation of corresponding integrals."
+
+%Leal2015: "Usually, the application of Picard’s method generates large mathematical expressions difficult to handle."
+
+%Rudmin1998: "Continuing this process constitutes the Picard iteration, which consists of expressing each righthand member of equations (1) through (4) as a power series of order n in t, and then using the equations to increment the number of terms for the series representing each left-hand member. This was published by Picard in 1928 [2], but has been since regarded as an impractical formalism"
+
+%Guenther2019:"The Parker-Sochacki Method (PSM) allows the numerical approximation of solutions to a polynomial initial value ordinary differential equation or system (IVODE) using an algebraic power series method. PSM is equivalent to a modified Picard iteration and provides an efficient, recursive computation of the coefficients of the Taylor polynomial at each step."
+
+%Parker1996: See example 3. 
+
+We assess the PS method on three criteria: accuracy, stability, and computational efficiency. Accuracy is quantified by the relative errors of the exact invariants. Stability refers to the ability of a method to conserve these invariants over extended numbers of equatorial gyroperiods, without showing rapidly increasing relative errors or stalled execution. Computational efficiency is evaluated first by comparing runtimes under identical fixed-time-step conditions (fixed-step), and second by comparing the runtime required to achieve a minimum target relative kinetic energy error for select runs. The RK4 method is used as a baseline for comparison with a fixed-step PS method. A comparison with the adaptive RK45 method is used to assess the performance of the fixed-step PS approach relative to an adaptive-step solver. The fixed-step RKG is included as a fourth-order symplectic reference.
+
+\section{Implementation of ODE Solvers}
+\label{sect:implementation}
+We implement the RK and PS methods in Python using 64-bit floating-point numbers \cite{IEEE754}, NumPy \cite{harris2020} arrays, and Numba \cite{lam2015} to accelerate performance-critical loops. For the PS method, each dynamical and auxiliary variable is represented as a truncated power series in a dimensionless time variable. The PS recurrence relations, explicitly derived in Section~\ref{sec:dipole}, are used to compute the power series coefficients recursively up to a maximum order of 40. In practice, an adaptive truncation criterion terminates the summation well before this order: at each step, after adding each successive order's contribution to the running sum, we compute the ratio of that contribution's magnitude to the magnitude of the accumulated partial sum for each dynamical variable, and the summation is terminated once the largest such ratio falls below a fixed tolerance (set to machine epsilon).
+
+We compare the PS method to a fixed-step RK4 method, the adaptive-step RK45 method \cite{Dormand1980} as implemented by SciPy \cite{scipy}, and the two-stage, fourth-order, symplectic RKG method (identified as RKG2 in \cite{Yugo2007}). Following the approach of \cite{Yugo2007}, we solve the stage equations by a fixed-point iteration \cite{Calvo2003}. The iteration tolerances and limits are not reported in \cite{Yugo2001, Yugo2007}; we therefore chose values consistent with the reported step size ($65$ steps per gyroperiod) and verified them against our trajectories and the reported relative kinetic energy errors. No results were reported on canonical momentum for comparison. We iterate until the largest change in the stage values between successive sweeps falls below $10^{-15}$, capping at $100$ sweeps, though roughly 10 sweeps were typically required. A larger tolerance resulted in a secular drift not observed in \cite{Yugo2007}, whereas at $10^{-15}$ the kinetic energy error remained bounded and at levels consistent with those reported in \cite{Yugo2007} for the time interval. All fixed-step solvers (RK4, RKG, and PS) are run with the same time step, ensuring that differences in runtime and invariant conservation arise from the methods themselves rather than from step-size adaptivity; RK45, which selects its own step size, is included as an adaptive-step reference. For RK45, the relative and absolute tolerances are $10^{-8}$ and $10^{-10}$, respectively. For the PS method, the power series expansions are derived analytically; beyond rewriting the equations of motion in dimensionless form, no further time or field rescaling is used. All trajectory calculations use Cartesian coordinates.
+
+%Note that Yugo and Iyemori aren't really explicit in how they solved for the RKG; however they cite Calvo which uses the fixed-point iteration. Comparing code vs papers vs results, we repeated the best we could with what information we had and I feel we are upfront about that. Our results are fairly consistent with theirs.
+
+We report wall-clock computation times to indicate the relative scaling behavior of the integrators rather than to establish a definitive performance ranking; absolute times are hardware- and software-dependent and reflect our implementations rather than the computational limits of any method. All integrators allow for further optimizations that we did not explore, such as alternative starting algorithms for the RKG iteration or step-size tuning for the PS method.
+
+\section{PS Method for the Dipole Problem}\label{sec:dipole}
+We now apply the PS method to the motion of a relativistic charged particle in a static magnetic dipole field. The dynamics of such a particle are governed by the Lorentz force law,
+        \begin{equation*}
+           m_{\text{rel}}\frac{d\mathbf{v}}{dt}=q\,\mathbf{v}\times\mathbf{B},
+        \end{equation*}
+where $q$ is the particle's charge, $\mathbf{B}$ is the magnetic field, and $m_{\text{rel}}$ is the relativistic mass. The particle's position evolves according to $d\mathbf{r}/dt=\mathbf{v}$, where $\mathbf{r}$ and $\mathbf{v}$ are the three-dimensional position and velocity vectors of the particle. Since the magnetic field does no work on the particle, the scalar speed remains constant, allowing the relativistic mass to be treated as a fixed parameter.
+
+To nondimensionalize the equations of motion, we define dimensionless position and velocity vectors by introducing a characteristic length, $r_0$, and speed,
+$v_0$, such that
+        \begin{equation*}
+            \mathbf{r'}=\frac{\mathbf{r}}{r_0}\quad\mbox{and}\quad
+            \mathbf{v'}=\frac{\mathbf{v}}{v_0}.
+        \end{equation*}
+We take $r_0 = R_E$, one Earth radius, and normalize the magnetic field by the equatorial field strength at that distance,
+        \begin{equation*}
+            B_0 = \frac{\mu_0 \mathfrak{m}}{4\pi R_E^3},
+        \end{equation*}
+where $\mu_0$ is the vacuum permeability and $\mathfrak{m}$ is the magnitude of the dipole moment. Time is normalized by the inverse of the angular gyrofrequency associated with $B_0$,
+        \begin{equation*}
+            \tau\equiv\frac{t}{\tau_0},\qquad
+            \tau_0\equiv\frac{m_{\text{rel}}}{|q|B_0}\;,
+        \end{equation*}
+with $v_0$ chosen such that $r_0/v_0=\tau_0$. The dimensionless equations of motion are then
+        \begin{align}
+            \frac{d\mathbf{v'}}{d\tau} &= s\,\mathbf{v'}\times \mathbf{B'}
+            \label{EQN: Rep Lorentz}\\
+        \intertext{and}
+            \frac{d\mathbf{r'}}{d\tau} &= \mathbf{v'},
+            \label{EQN: Rep dr/dt}
+        \end{align}
+where $s \equiv q/|q|$ is the sign of the charge, $+1$ for ions and $-1$ for electrons, and the dimensionless dipole field is
+        \begin{equation}
+            \mathbf{B'}(\mathbf{r'})=\frac{\mathbf{B}}{B_0}
+            =\frac{3(\hat{\boldsymbol{\mathfrak{m}}}\cdot\hat{\mathbf{r}})\hat{\mathbf{r}}
+            - \hat{\boldsymbol{\mathfrak{m}}}}{r'^3},
+            \label{EQN: Dipole B main}
+        \end{equation}
+where $\hat{\boldsymbol{\mathfrak{m}}}$ is the unit vector along the dipole axis. For the PS construction, we align the dipole axis with the $z$-axis, $\hat{\boldsymbol{\mathfrak{m}}} = -\hat{\mathbf{z}}$, representing a southward-pointing Earth-like dipole. In Cartesian coordinates Eq.~\eqref{EQN: Dipole B main} becomes
+        \begin{equation}
+            B'_x = -\frac{3x'z'}{r'^5}, \qquad
+            B'_y = -\frac{3y'z'}{r'^5}, \qquad
+            B'_z = -\frac{2z'^2 - x'^2 - y'^2}{r'^5},
+            \label{EQN: Dipole B components}
+        \end{equation}
+where $r' = \sqrt{x'^2 + y'^2 + z'^2}$. 
+
+The fixed time step is referenced to the gyroperiod at the local magnetic equator, where the field is weakest along a given field line and the gyroperiod is longest. For the field line crossing the magnetic equator at radial distance $L$ (the magnetic shell parameter in units of $R_E$), the equatorial field strength is $B_{\mathrm{eq}} = B_0/L^3$. Therefore, the dimensionless equatorial gyroperiod is
+        \begin{equation*}
+            T = \frac{2\pi B_0}{B_{\mathrm{eq}}} = 2\pi L^3.
+        \end{equation*}
+The resulting dimensionless step size is
+        \begin{equation}
+            \Delta \tau = \frac{2\pi L^3}{N},
+            \label{eqn: dipole tau}
+        \end{equation}
+where $N$ is the number of integration steps per equatorial gyroperiod. Because the local gyroperiod scales inversely with the field strength, the off-equatorial portions of a trajectory are resolved by proportionally fewer steps per gyration; the shortest local gyroperiod occurs at the mirror points, where $B = B_{\mathrm{eq}}/\sin^2\alpha_{\mathrm{eq}}$ for equatorial pitch angle $\alpha_{\mathrm{eq}}$, so for the smallest pitch angle considered here ($30^\circ$) every gyration is resolved by no fewer than $N/4$ steps.
 
 
-While not quantitatively bound as part of this effort, there appears to be a tradeoff points between the methods depending on both the extremes of the trajectory desired, legnth of run, and other analysis priorities.
-
-\section{Magnetic Dipole}
-The final application examines the complex motion of a particle in a dipole field, it provides a robust case study for analyzing the behavior and capabilities of each method. A particle with an initial velocity with both perpendicular and a parallel components, relative to the magnetic field, will experience both a circular motion perpendicular to the magnetic field, as was discussed in the first application, as well as oscillatory motion both along the field line and a drift motion perpendicular to the field line [\textcolor{red}{bluebook reference}].
-\begin{equation}   
-        F=m\frac{d\mathbf{v}}{dt}=q\mathbf{v}\times\mathbf{B}
-    \end{equation}
-with 
-    \begin{equation} 
-        \mathbf{B(r)}=\frac{\mu_0}{4\pi}\cdot\frac{3(\mathbf{m\cdot\hat{r}})\mathbf{\hat{r}}-\mathbf{m}}{r^3}
-    \end{equation}
-where $\mathbf{m}=m\hat{z}$ so that 
-    \begin{equation}
-        \mathbf{B(r)}=\frac{\mu_0}{4\pi}\cdot\frac{3m\mathbf{\hat{r}}-\mathbf{m}}{r^3}
-    \end{equation}
-or explicitly,
-    \begin{align}
-        B_x=&\frac{\mu_0m}{4\pi}\frac{3xz}{r^5}\\
-        B_y=&\frac{\mu_0m}{4\pi}\frac{3yz}{r^5}\\
-        B_z=&\frac{\mu_0m}{4\pi}\frac{3z^2-r^2}{r^5}
-    \end{align}
-\subsection{Determining the Power Series}
-Given the following equations
-    \begin{align} 
-        x=\sum_{i=0}^\infty x_it^i\quad\quad y=\sum_{i=0}^\infty y_it^i\quad\quad z=\sum_{i=0}^\infty z_it^i
-    \end{align}
-the following auxiliary variables, remembering that each is considered to be an expansion in $t$, can be established    
-    \begin{align}
-            \beta=xz=\left(\sum_{i=0}^\infty x_it^i\right)\left(\sum_{i=0}^\infty z_it^i\right)=\sum_{i=0}^\infty\left(\sum_{j=0}^i z_jx_{i-j} \right)t^i
-      \end{align}
-such that 
-    \begin{align}
-        \beta_i=\sum_{j=0}^i z_jx_{i-j} 
-    \end{align}
-
-    \begin{align}
-            \gamma=yz=\left(\sum_{i=0}^\infty y_it^i\right)\left(\sum_{i=0}^\infty z_it^i\right)=\sum_{i=0}^\infty\left(\sum_{j=0}^i z_jy_{i-j} \right)t^i
-    \end{align}
+\subsection{Recurrence Relations}
+From this point forward, all variables are understood to be dimensionless, and the prime notation is omitted. We begin by expressing the $x$-component of position and velocity as power series in time:
+        \begin{equation}\label{EQN: ConstB x}
+            x=\sum_{i=0}^\infty x_i\tau^i
+        \end{equation}
+        \begin{equation}\label{EQN: ConstB v}
+            v_x=\sum_{i=0}^\infty v_{xi}\tau^i .
+        \end{equation}
+Substituting Eqs.~\eqref{EQN: ConstB x} and \eqref{EQN: ConstB v} into the
+$x$-component of Eq.~\eqref{EQN: Rep dr/dt} gives
+    \begin{align*}
+            \frac{d}{d\tau}\left(\sum_{i=0}^\infty x_i\tau^i\right)=& \sum_{i=0}^\infty v_{xi}\tau^i\;,\\
+\intertext{which reduces to}
+            \sum_{i=0}^\infty ix_i\tau^{i-1}=&\sum_{i=0}^\infty v_{xi}\tau^i.
+    \end{align*}
+We reindex the left-hand side using $i \to i+1$ and equate powers of $\tau$ giving
+    \begin{equation*}
+        x_{i+1}=\frac{v_{xi}}{i+1}.
+    \end{equation*}
+This generates the coefficients for Eq.~\eqref{EQN: ConstB x}. Similarly, the remaining position recurrence relations are
+        \begin{align*}
+            y_{i+1}=\frac{v_{yi}}{i+1}\quad
+            \mbox{and}\quad
+            z_{i+1}=\frac{v_{zi}}{i+1}.
+        \end{align*}
+The remaining recurrence relations rely on two power series identities. Products of series are combined using the Cauchy product identity,
+        \begin{equation}
+            \left(\sum_{i=0}^\infty P_i\tau^i\right)\left(\sum_{i=0}^\infty Q_i\tau^i\right)
+            =\sum_{i=0}^\infty\tau^i\sum_{j=0}^i P_jQ_{i-j}.
+            \label{EQN:cauchyb}
+        \end{equation}
+For the ratio of two power series, $W=P/Q$, rearranging as $QW=P$ and applying Eq.~\eqref{EQN:cauchyb} to the left-hand side gives
+    \begin{align*}
+        \sum_{j=0}^i Q_jW_{i-j}=&\,P_i.\\
+\intertext{Isolating the $j=0$ term from the summation gives}
+        Q_0W_i+\sum_{j=1}^i Q_jW_{i-j}=&\,P_i,
+    \end{align*}
+and rearranging results in the identity
+        \begin{equation}
+            W_i=\frac{1}{Q_0}\left(P_i-\sum_{j=1}^i Q_jW_{i-j}\right).
+            \label{EQN: Cauchy a/b}
+        \end{equation}
+We define a set of auxiliary variables ($a,\,b,\,c,\,d,\,e,\,f,\,g,$ and $u$) by first letting
+        \begin{align*}
+            a &\equiv \frac{1}{r^5}, \\
+            b &\equiv 2z^2-x^2-y^2, \\
+            c &\equiv yz,\\
+         \intertext{and}
+            d &\equiv xz,
+        \end{align*}
 such that
-    \begin{align}
-        \gamma_i=\sum_{j=0}^i z_jy_{i-j}
-    \end{align}
-Noting the $z^2$ will be the only auxiliary variable needed explicitly, $x^2$ and $y^2$ are only needed implicitly for $r$, gives
-    \begin{align}
-        x^2=\left(\sum_{i=0}^\infty x_it^i\right)^2=\sum_{i=0}^\infty\left(\sum_{j=0}^i x_jx_{i-j} \right)t^i\label{EQN:dipole_x^2}\\
-        y^2=\left(\sum_{i=0}^\infty y_it^i\right)^2=\sum_{i=0}^\infty\left(\sum_{j=0}^i y_jy_{i-j} \right)t^i\label{EQN:dipole_y^2}\\
-        \epsilon=z^2=\left(\sum_{i=0}^\infty z_it^i\right)^2=\sum_{i=0}^\infty\left(\sum_{j=0}^i z_jz_{i-j} \right)t^i\label{EQN:dipole_z^2}
-    \end{align}
-such that 
-    \begin{align}
-        \epsilon_i=\sum_{j=0}^i z_jz_{i-j}
-    \end{align}
-Equations \ref{EQN:dipole_x^2}, \ref{EQN:dipole_y^2}, and \ref{EQN:dipole_z^2} give
-    \begin{equation}
-        r^2=\sum_{i=0}^\infty \left(\sum_{j=0}^i x_jx_{i-j}+y_jy_{i-j}+z_jz_{i-j}\right)t^i
-    \end{equation}
-Finally, the remaining auxiliary variables are established to address $r^{-5}$,
-\begin{align}
-    a &= r^2 = \sum_{i=0}^\infty a_i t^i \\
-    b &= a^{-5/2} = \sum_{i=0}^\infty b_i t^i \\
-    c &= \frac{1}{a} = \sum_{i=0}^\infty c_i t^i
-\end{align}
-where 
-    \begin{align}
-        a_i=\sum_{j=0}^i x_jx_{i-j}+y_jy_{i-j}+z_jz_{i-j}\label{eqn:afordipole}
-    \end{align}
-A recursion relationship for $c$ can be developed by noting the following
-\begin{equation}
-ca=\sum_{i=0}^\infty a_it^i\sum_{j=0}^\infty c_jt^j=\sum_{i=0}^\infty\left(\sum_{j=0}^i a_jc_{i-j} \right)t^i=1\\
-\end{equation}
-Therefore, $a_0c_0=1$ and all other terms can be summarized as follows 
-\begin{align}
-\sum_{j=0}^i a_jc_{i-j} =0\quad\text{for } i>0\\
-c_ja_0+ \sum_{j=1}^i a_jc_{i-j} =0\quad\text{for }i>0\\
-c_i=-\frac{1}{a_0} \sum_{j=1}^i a_jc_{i-j}\quad\text{for } i>0 \label{eqn:cfordipole}
-\end{align}
+        \begin{align*}
+           B_x&=-\frac{1}{r^5}3xz=-3ad,\\
+           B_y&=-\frac{1}{r^5}3yz=-3ac,\\
+         \intertext{and}
+            B_z&=-\frac{1}{r^5}(2z^2-x^2-y^2)=-ab.
+        \end{align*}
+Next, we express the acceleration equations in terms of these auxiliary variables and define the remaining auxiliary variables,
+        \begin{align*}
+            \frac{dv_x}{d\tau} &= s\left(B_z v_y - B_y v_z\right)
+            = sa(3c v_z - b v_y) = sae, \\
+            \frac{dv_y}{d\tau} &= s\left(B_x v_z - B_z v_x\right)
+            = sa(b v_x - 3d v_z) = saf, \\
+         \intertext{and}
+            \frac{dv_z}{d\tau} &= s\left(B_y v_x - B_x v_y\right)
+            = sa(3d v_y - 3c v_x) = sag,
+        \end{align*}
+where
+        \begin{align*}
+            e &\equiv 3c v_z - b v_y, \\
+            f &\equiv b v_x - 3d v_z, \\
+         \intertext{and}
+            g &\equiv 3d v_y - 3c v_x.
+        \end{align*}
+Let $u\equiv r^2$ such that
+        \begin{gather*}
+            	    a=u^{-\frac{5}{2}},\\
+            \intertext{and using}
+            	\ln a=-\frac{5}{2}\ln u\\
+             \intertext{gives}
+            	\frac{1}{a}\frac{da}{d\tau}=-\frac{5}{2}\frac{1}{u}\frac{du}{d\tau}\\
+            \intertext{which can be rearranged into an expression containing $a/u$, a series divided by another series,}
+            		\frac{da}{d\tau}=-\frac{5}{2}\frac{a}{u}\frac{du}{d\tau}.\\
+            \intertext{Letting $\zeta=a/u$, substituting in the summations for each auxiliary variable, and reindexing the derivative terms gives }
+            		\sum_{i=0}^\infty (i+1)a_{i+1}\tau^i=-\frac{5}{2}\left( \sum_{i=0}^\infty\zeta_i\tau^i \right)\left( \sum_{i=0}^\infty (i+1)u_{i+1}\tau^i \right), \\
+            \intertext{where the terms on the right can be simplified using the Cauchy product identity, Eq.~\eqref{EQN:cauchyb},}
+                    	\sum_{i=0}^\infty (i+1)a_{i+1}\tau^i=-\frac{5}{2}\sum_{i=0}^\infty \tau^i\left(\sum_{j=0}^i(i-j+1)\zeta_j u_{i-j+1}\right).\\
+            \intertext{Matching powers of $\tau$ gives}
+                    a_{i+1}=-\frac{5}{2(i+1)}\sum_{j=0}^i(i-j+1)\zeta_j u_{i-j+1},\\
+            \intertext{and from Eq.~\eqref{EQN: Cauchy a/b}, with $P=a$ and $Q=u$, we have}
+                \zeta_i=\frac{1}{u_0}\left(a_i-\sum_{j=1}^iu_j\zeta_{i-j}\right)\quad\mbox{where}\quad \zeta_0=\frac{a_0}{u_0}.
+        \end{gather*}
+Applying the same process, the recurrence relations for the remaining auxiliary variables are
+        \begin{align*}
+            u_i=&\sum_{j=0}^i x_jx_{i-j}+\sum_{j=0}^i y_jy_{i-j}+\sum_{j=0}^i z_jz_{i-j},\\
+            b_i=&\,2\sum_{j=0}^i z_jz_{i-j}-\sum_{j=0}^i x_jx_{i-j}-\sum_{j=0}^i y_jy_{i-j},\\
+            c_i=&\sum_{j=0}^i y_jz_{i-j},\\
+            d_i=&\sum_{j=0}^i x_jz_{i-j},\\
+            e_i=&\,3\sum_{j=0}^i c_jv_{z,i-j}-\sum_{j=0}^i b_jv_{y,i-j},\\
+            f_i=&\sum_{j=0}^i b_jv_{x,i-j}-3\sum_{j=0}^i d_jv_{z,i-j},\\
+    \intertext{and}
+            g_i=&\,3\sum_{j=0}^i d_jv_{y,i-j}-3\sum_{j=0}^i c_jv_{x,i-j}.
+        \end{align*}
+The velocity recurrence relations can then be expressed as
+        \begin{align*}
+            v_{x, i+1} &=  \frac{s}{i+1} \sum_{j=0}^i a_j e_{i-j}, \\
+            v_{y, i+1} &=   \frac{s}{i+1} \sum_{j=0}^i a_j f_{i-j}, \\
+      \intertext{and}
+            v_{z, i+1} &=   \frac{s}{i+1} \sum_{j=0}^i a_j g_{i-j}.
+        \end{align*}
+At each time step, the zeroth-order coefficients ($x_0$, $v_{x0}$, $u_0$, and so on) are evaluated from the state at the beginning of the step, and the recurrence relations above then generate all higher-order coefficients. The updated state follows from evaluating the truncated series at $\tau = \Delta\tau$. At the end of each step, the auxiliary variables are re-evaluated, or tethered, directly from the advanced position and velocity rather than advanced by their own summed series, keeping them consistent with the dynamical state at the start of the next step (see Appendix~\ref{Intro: ExIII} for details).
 
-Finally, to build out the recursion relationship for $b$, take the time derivative of the power series, giving
+\section{Results}\label{SEC:results}
 
-\begin{align}
-    \frac{db}{dt} = -\frac{5}{2} \cdot b \cdot c \cdot \frac{da}{dt}
-\end{align}
+\subsection{Comparisons at a Common Fixed Time Step}
+For the following simulations, $N=65$ is used for each fixed-step method, corresponding to 65 integration steps per gyroperiod at the magnetic equator, where the gyroperiod is longest. Particles are initialized at $5\,R_E$, giving a fixed time step, from Eq.~\eqref{eqn: dipole tau}, of $\Delta\tau=2\pi(5^3)/65\approx12.1$. Simulation durations are expressed as the number of elapsed equatorial gyroperiods, $\tau/T$. Initially, simulations were run for $\tau/T=10^{6}$; however, both RK4 and RK45 frequently became unstable due to high kinetic energy errors. Additionally, RK45 underwent repeated step-size refinements that led to excessive computational runtime and, in several instances, stalling execution. To allow for meaningful comparison and to capture the long-time trends of the RK methods, each simulation was run for a common time interval of $\tau/T = 1.5\times 10^{5}$. This allowed most RK4 and RK45 runs to complete before instability (see Tables~\ref{tab:proton_energy_results} and \ref{tab:electron_energy_results} in Appendix~\ref{appendix:tables}). Additional long-time analyses using extended gyroperiod counts were performed for the PS and RKG methods and are discussed in the corresponding subsections. 
 
-    \begin{equation}
-        \begin{split}
-        \sum_{i=0}^\infty (i+1)b_{i+1} t^i =& -\frac{5}{2}
-        \left( \sum_{i=0}^\infty b_i t^i \right)
-        \left( \sum_{j=0}^\infty c_j t^j \right)
-        \left( \sum_{k=0}^\infty (k+1) a_{k+1} t^k \right)\\
-        =&-\frac{5}{2}
-        \left[ \sum_{i=0}^\infty \left(\sum_{j=0}^i b_jc_{i-j}\right)t^i \right]
-        \left( \sum_{k=0}^\infty (k+1) a_{k+1} t^k \right)\\
-        =&-\frac{5}{2}
-         \sum_{i=0}^\infty \left(\sum_{k=0}^i(k+1)a_{k+1}\sum_{j=0}^{i-k}b_jc_{i-k-j} \right)t^i 
-        \\
-        \end{split}
-    \end{equation}
-and comparing the coefficients of $t^i$ on both sides gives the recurrence relation 
-    \begin{equation}\label{eqn:bfordipole}
-        b_{i+1}=-\frac{5}{2(i+1)}\sum_{k=0}^i(k+1)a_{k+1}\sum_{j=0}^{i-k}b_jc_{i-k-j}
-    \end{equation}
-The magnetic fields, having been normalized to $\mu_0 m/4\pi$, can now be written as
-    \begin{align}
-        B_x=\frac{3xz}{r^5}=3\beta b\quad\text{whe}&\text{re}\quad B_{xi}=3\sum_{k=0}^i b_k\beta_{i-k}\\
-        B_y=\frac{3yz}{r^5}=3\gamma b\quad\text{whe}&\text{re}\quad B_{yi}=\sum_{k=0}^i b_k\gamma_{i-k}\\
-        B_z=\frac{3z^2-r^2}{r^5}=3\epsilon b-ab\quad\text{whe}&\text{re}\quad B_{zi}=\sum_{k=0}^i( 3b_k\epsilon_{i-k} -b_ka_{i-k})
-    \end{align}
-and given the initial parameters of the system, the initial parameters of the auxiliary variables are as follows
-    \begin{equation}
-        \begin{tabular}{ l l l}
-        r_0^2=x_0^2+y_0^2+z_0^2 && \beta_0=z_0x_0\\
-        a_0=r_0^2 & &\gamma_0=z_0y_0\\
-        b_0=r_0^{-5/2} &&\epsilon_0=z_0^2\\
-        c_0=1/r_0^2 &&
-        \end{tabular}
-    \end{equation}
-and the remaining equations equations necessary to model this system are the familiar
-    \begin{gather}
-        x=\,x_0 + \sum_{i=0}^\infty\frac{v_{xi}}{i+1} t^{i+1}\\
-        y=\,y_0 + \sum_{i=0}^\infty\frac{v_{yi}}{i+1} t^{i+1}\\
-        z=\,z_0 + \sum_{i=0}^\infty\frac{v_{zi}}{i+1} t^{i+1}\\
-        v_x=v_{x0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{yi}B_{zi}-v_{zi}B_{yi})t^{i+1}\\
-        v_y=v_{y0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{zi}B_{xi}-v_{xi}B_{zi})t^{i+1}\\
-        v_z=v_{z0}+\sum_{i=0}^\infty\frac{1}{i+1} (v_{xi}B_{yi}-v_{yi}B_{xi})t^{i+1}
-    \end{gather}
-From a given initial value, a complete set of recursion relationships now exists to be able to calculate the motion of charged particle in a magnetic field. 
-\subsection{Numerical Comparison}
-For the initial analysis $q/m$ was normalized to 1 for the preliminary analysis, it was increased by a factor of 2 to test the responsiveness of the methods to increasing levels of stiffness. This was not meant to be representative of a physical system but rather to push the calculations into a region of rapid solution variations that would introduce instability, this allowed for an examination of the methods in an area where stiffness typically poses a challenge \cite{sottas}\cite{boris}. Initial analysis considered a high-energy particle in a dipole field analyzed under the following initial conditions: 
-    \begin{equation}
-        \begin{tabular}{ l l l }
-            x_0=0 & v_{x_0}=\textcolor{red}{0.008} &\text{dipole moment}=1\\ 
-            y_0=note1.0 & v_{y_0}=\textcolor{red}{0.0055}    \\  
-            z_0=1.0 & v_{z_0}=\textcolor{red}{0.006}\\
-        \end{tabular}
-    \end{equation}
-[\textcolor{red}{Discuss Results}]\\
+Accuracy is defined by the relative errors of the two exact invariants, kinetic energy, $E$, and canonical momentum, $P_{\phi}$. The relative kinetic energy error is
+        \begin{equation*}
+            \frac{|\Delta E|}{E_0}=\frac{|E-E_0|}{E_0}
+            \quad\mbox{where}\quad
+            E = \tfrac{1}{2}\left(v_x^2+v_y^2+v_z^2\right),
+        \end{equation*}
+with $E$ the dimensionless kinetic energy per unit relativistic mass and $E_0$ its initial value. The relative canonical momentum error,
+        \begin{equation*}
+            \frac{|\Delta P_{\phi}|}{|P_{\phi,0}|}=\frac{|P_\phi-P_{\phi,0}|}{|P_{\phi,0}|}
+            \quad\mbox{where}\quad
+            P_\phi = \rho\, v_\phi - s\,\frac{\rho^2}{r^3},
+        \end{equation*}
+and $\rho = \sqrt{x^2 + y^2}$ is the cylindrical radius, $r = \sqrt{x^2 + y^2 + z^2}$, $v_\phi = (x v_y - y v_x)/\rho$ is the azimuthal velocity, $s = q/|q|$ is the sign of the charge, and $P_{\phi,0}$ is the initial canonical momentum. Since $\gamma$ is constant in this formulation, conservation of $E$ is equivalent to conservation of the speed, and hence of the relativistic kinetic energy. For a small drift in speed, the corresponding relative drift in the relativistic kinetic energy exceeds that of $E$ by a factor of $\gamma(\gamma+1)/2$; because this factor depends only on the particle and not on the integrator, it is common to all methods for a given run and does not affect any comparison between them.
 
-Next, a low energy particle in the dipole field was analyzed under the following initial conditions:\\
-    \begin{equation}
-        \begin{tabular}{ l l l }
-            x_0=0 & v_{x_0}=0.008 &\text{dipole moment}=1\\ 
-            y_0=1.0 & v_{y_0}=0.0055    \\  
-            z_0=1.0 & v_{z_0}=0.006\\
-        \end{tabular}
-    \end{equation}
-[\textcolor{red}{Discuss Results}]\\
+For the dipole field, the gradient scale length at the equatorial crossing of the field line is $L_B = L/3$, and the dimensionless equatorial gyroradius is $r_g = v_{\perp} L^{3}$, where $v_{\perp}$ is the dimensionless perpendicular speed at the equator. The parameter $\varepsilon$ introduced in Section~\ref{SEC:intro}, evaluated at the equator, is therefore
+        \begin{equation*}
+            \varepsilon = \frac{r_g}{L_B} = 3\, v_{\perp} L^{2}.
+        \end{equation*}
+Across the simulations discussed below, $\varepsilon$ ranges from ${\sim}3\times10^{-3}$ to ${\sim}0.2$; the highest-energy runs of both species therefore lie in a regime where the gyroradius is no longer small compared with the length scale over which the field varies, and the validity of the guiding center approximation, while not used here, is uncertain.
 
-% Increasing $q/m$ from 1 to 2 resulted in both RK methods diverging rapidly, Figure \ref{FIG:Dipole_traj_400s}. This divergence could not be compensated for by decreasing the time step several orders of magnitude and the drift error continued to diverge, Figure \ref{FIG:Dipole_error_400s}. 
-%     \begin{figure}[H]
-%         \centering
-%         \begin{minipage}[t]{0.4\textwidth}
-%             \centering
-%             \includegraphics[width=\textwidth]{Images/Dipole/Dipole_slow_PS_Order3_traj_qm2_400s.png}
-%             \caption{2D particle trajectories in a dipole field showing divergence of RK methods from PS model for a low-velocity charged particle.}
-%             \label{FIG:Dipole_traj_400s}
-%         \end{minipage}%
-%         \hfill
-%         \begin{minipage}[t]{0.45\textwidth}
-%             \centering
-%             \includegraphics[width=\textwidth]{Images/Dipole/Dipole_slow_PS_Order3_error_qm2_400s.png}
-%             \caption{Energy drift of a low-velocity charged particle in a dipole field computed using the Parker–Sochacki method and two different Runge-Kutta methods (fixed-step fourth order, RK4, and adaptive, RK45).}
-%             \label{FIG:Dipole_error_400s}
-%         \end{minipage}
-%     \end{figure}
-The PS method was able to maintain stable simulation of the particle trajectory in a dipole field and continued to exhibit the characteristic bounce 
- and drift motion, Figure \ref{FIG:Dipole_drift} and Figure \ref{FIG:Dipole_bounce}, for an extended period of time, 5000 units in scaled time.
-    \begin{figure}[H]
+For the PS method, the mean truncation order is used to label each run; for example, a simulation truncated on average at the 13th order is denoted PS13.
+
+\subsubsection{Proton Simulations}\label{Proton Simulations}
+This section details the simulation of a proton in a magnetic dipole field at four energies: 10~keV, 100~keV, 1~MeV, and 10~MeV. Two pitch angles are used: 90$^{\circ}$ and 30$^{\circ}$. The 90$^{\circ}$ pitch angle isolates the azimuthal drift, while the 30$^{\circ}$ pitch angle combines the bounce motion along the field line with azimuthal drift.
+
+Figure~\ref{FIG:DipoleB_ex1_traj} shows representative trajectories for PS13, RK45, and RKG for a 100~keV proton with a $30^{\circ}$ pitch angle, evaluated over the final drift period (103.4~minutes of physical time) of the common time interval (657.1~minutes of physical time). RK4 is omitted because it failed at approximately $\tau/T=6\times 10^{3}$, with relative kinetic energy errors on the order of $10^6$. By the end of the common time interval, RK45 has a visible difference in azimuthal position relative to RKG and PS13, which are in visual agreement.
+
+  \begin{figure}[H]
         \centering
-        \begin{minipage}[t]{0.4\textwidth}
-            \centering
-            \includegraphics[width=\textwidth]{Images/Dipole/Dipole_slow_PS_Order3_traj_qm2_5000s.png}
-            \caption{Low-velocity charged particle in a magnetic dipole exhibiting characteristic bounce and drift in x-y plane using PS method.}
-            \label{FIG:Dipole_drift}
-        \end{minipage}%
-        \hfill
-        \begin{minipage}[t]{0.45\textwidth}
-            \centering
-            \includegraphics[width=\textwidth]{Images/Dipole/Dipole_slow_PS_Order3_3Dtraj_qm2_5000s.png}
-            \caption{Low-velocity charged particle in a magnetic dipole exhibiting characteristic bounce and drift in 3-D using PS method.}
-            \label{FIG:Dipole_bounce}
-        \end{minipage}
+            \captionsetup{width=0.75\textwidth}
+            \includegraphics[width=0.65\textwidth]{Images/Dipole/proton/334a30_3Dslice.png}
+        \caption{Trajectory of a 100~keV proton in Earth's magnetic dipole field over the final drift period (103.4~minutes) of the common time interval, $\tau/T=1.5\times10^{5}$ (657.1~minutes). Using PS13, RK45, and RKG, the proton is initialized at $5\,R_E$ with a $30^{\circ}$ pitch angle and integrated with a fixed time step corresponding to 65 integration steps per equatorial gyroperiod ($\Delta\tau = 12.1$). RK4 failed due to high relative kinetic energy error at approximately $\tau/T=6\times 10^{3}$ and is therefore omitted.}
+        \label{FIG:DipoleB_ex1_traj}
     \end{figure}
 
+The corresponding relative errors of the exact invariants are shown in Fig.~\ref{FIG:Dipole_proton_all}: kinetic energy in panel~(a) and canonical momentum in panel~(b). The figure includes both the common time interval and extended integrations for the RKG and PS13 runs. Over the common time interval, PS13 has relative kinetic energy errors that are approximately 10 orders of magnitude lower than those of RK45 and approximately 5 orders of magnitude lower than those of RKG. Similarly, PS13 has relative canonical momentum errors that are more than 7 orders of magnitude lower than those of RK45 and approximately an order of magnitude lower than those of RKG. At the common fixed time step, PS13 runtimes are comparable to those of RKG, while RK45 has substantially longer runtimes. All relative errors and runtimes over the common time interval are summarized in Appendix Table~\ref{tab:proton_energy_results}.
+
+Beyond the common time interval, the extended integrations reveal distinct long-time behaviors. The RKG run, extended to $\tau/T=2\times 10^{7}$ (60.8~days of physical time), shows a gradual secular increase in relative kinetic energy error after $\tau/T=10^{6}$, indicating a degradation of its effective symplectic behavior. The PS13 run, extended to $\tau/T=10^{9}$ (8.3~years of physical time), shows the relative errors of both exact invariants continuing to grow approximately linearly with simulated time, with no abrupt loss of accuracy or stability. If this trend were to hold for an additional order of magnitude, corresponding to approximately 80 years of physical time, the PS13 error would remain below $10^{-6}$.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.75\textwidth}
+     \vspace{-3mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/proton/99fcf0_KEerror.png}
+        \label{FIG:DipoleB_ex1_energyerror}
+    \end{subfigure}
+    \vspace{-4mm} %negative space
+    \begin{subfigure}[t]{0.75\textwidth}
+        \vspace{-6mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/proton/99fcf0_Pphierror.png}
+        \label{FIG:DipoleB_ex1_momentumerror}
+    \end{subfigure}
+    \captionsetup{width=0.75\textwidth}
+    \caption{Relative errors of the exact invariants for the proton in Fig.~\ref{FIG:DipoleB_ex1_traj}: (a) kinetic energy and (b) canonical momentum. The RKG and PS13 runs are extended beyond the common interval to $\tau/T=2\times 10^{7}$ (60.8~days) and $\tau/T=10^{9}$ (8.3~years), respectively.} \label{FIG:Dipole_proton_all}
+\end{figure}
+
+Figure~\ref{FIG:bubbleplot_protons} compares the trade-offs between invariant accuracy and computational runtime in our configuration: kinetic energy in panel~(a) and canonical momentum in panel~(b). Each marker represents the mean relative error computed over the final 1\% of the run.  Markers absent from Fig.~\ref{FIG:bubbleplot_protons} correspond to runs that did not complete the common time interval due to numerical instability. A complete tabulation of these metrics is provided in Appendix Table~\ref{tab:proton_energy_results}. All methods except RK45 use the common fixed time step, isolating differences in how numerical error accumulates within each method rather than differences arising from step-size selection.
+
+RK4 has the shortest runtimes at the expense of the largest errors in both invariants, producing large kinetic energy errors for pitch angles of $90^{\circ}$ and failing due to instabilities for most protons at $30^{\circ}$. RK45 improves on RK4's accuracy but still conserves neither invariant well, and does so at the longest runtimes of any method. RKG occupies an intermediate regime with runtimes comparable to the PS method; it conserves the canonical momentum to near machine precision, within about an order of magnitude of the PS method's; however, its relative kinetic energy error, though far lower than that of the RK methods, remains roughly six orders of magnitude above that of the PS method and grows secularly on long timescales. By contrast, the PS method is the only method to attain the lowest errors in both exact invariants simultaneously, at runtimes comparable to RKG's and far below those of RK45.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.65\textwidth}
+     \vspace{-3mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/proton/proton_summary_results_energy.png}
+    \label{FIG:proton energy summary}
+    \end{subfigure}
+    \vspace{-4mm} %negative space
+    \begin{subfigure}[t]{0.65\textwidth}
+        \vspace{-8mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/proton/proton_summary_results_pphi.png}
+        \label{FIG:proton momentum summary}
+    \end{subfigure}
+
+    \captionsetup{width=0.65\textwidth}
+    \caption{Comparison of the PS, RK4, RK45, and RKG methods for protons in Earth's magnetic dipole field, initialized at $5\,R_E$. The fixed-step methods (PS, RK4, and RKG) use an identical time step of 65 integration steps per equatorial gyroperiod ($\Delta\tau = 12.1$), while RK45 uses adaptive stepping. All results are evaluated over the common time interval of $\tau/T = 1.5\times 10^{5}$. Marker size indicates proton energy (10~keV, 100~keV, 1~MeV, and 10~MeV), with larger markers corresponding to higher energies; black-ringed markers denote the $30^{\circ}$ pitch angle runs and plain filled markers the $90^{\circ}$ runs. Each point is the mean over the final 1\% of the run duration of (a) the relative kinetic energy error, $|\Delta E|/E_0$, and (b) the relative canonical momentum error, $|\Delta P_{\phi}|/|P_{\phi,0}|$, plotted against computational runtime. The legend in panel~(a) applies to both panels.}
+    \label{FIG:bubbleplot_protons}
+\end{figure}
 
 
-While a comprehensive parameter sweep was beyond the scope of this study, initial analysis indicates that the PS method presents a viable solution for simulating particle motion in dipole fields and under conditions where traditional methods struggle with stability and energy conservation, it may work as an alternative with a careful selection of parameters.\\
+In Section~\ref{SEC:Dip Discussion} that follows, a comparison using a minimum target relative kinetic energy error rather than matched step size further reinforces these results. When the parameters of RK4 and PS are chosen to have comparable relative kinetic energy errors, the PS method reaches the desired accuracy requirements with runtimes that are approximately an order of magnitude faster than RK4 in our system configuration.
 
 
-\section{Concluding Observations}
-This paper has investigated the Parker-Sochacki (PS) method as a viable approach for simulating charged particle motion in magnetic fields, providing a detailed comparison with the established Runge-Kutta techniques (RK4 and RK45). The results demonstrate that the PS method, when properly formulated, is capable of producing accurate and stable trajectories across a range of magnetic field configurations, including constant, hyperbolic, and dipole fields. While Runge-Kutta methods remain a powerful and widely used tool, the PS method offers a distinct alternative, grounded in power series expansions and auxiliary variables. It is important to acknowledge that the PS method often involves an upfront cost in terms of the analytical effort required to derive the power series equations and auxiliary variable relationships specific to each problem. Furthermore, while the PS method often required a smaller time step compared to Runge-Kutta methods, its computational cost per step can be lower due to its reliance on simple algebraic operations. However, reducing the time step excessively should be handled with care, as the power series expansions are proportional to $t^n$, where $n$ is the PS order, can lead to early truncation errors if the time step is too small, effectively limiting the accuracy of the approximation.\\
+\subsubsection{Electron Simulations}
+This section details the simulation of an electron in a magnetic dipole field at four energies: 50~keV, 1~MeV, 100~MeV, and 150~MeV. Two pitch angles are used: 90$^{\circ}$ and 60$^{\circ}$, the latter chosen to match the electron configuration of \cite{Yugo2007}. As in the proton simulations, the 90$^{\circ}$ pitch angle isolates the azimuthal drift, while the 60$^{\circ}$ pitch angle combines the bounce motion along the field line with azimuthal drift. The RKG method was unstable for every electron configuration considered here; its relative kinetic energy error exceeded unity immediately upon initialization, consistent with the findings of \cite{Yugo2007} for electrons in Cartesian coordinates. It is therefore omitted from the electron comparisons. 
 
-It's important to address that this study did not focus on maximizing code efficiency for any of the methods, nor did it conduct a full parameter sweep to comprehensively evaluate their performance across all possible scenarios. This purpose of this study was to highlight the PS method as a functional and potentially valuable tool for simulating charged particle dynamics, expanding the available options for researchers and providing a basis for further exploration and optimization. Future work could focus on adaptive step-size control for the PS method and investigation of its performance in more complex, realistic magnetic field environments, as well as code optimization to improve computational efficiency. The intent of this paper is not to promote one method over another, but rather to demonstrate the practical viability of the PS method.
+%Yugo2007:"..relativistic electrons having energies from 10 to 150 MeV with pitch angles from 90° to 30° at L ∼ 5 are also practiced. For the electrons above 50 MeV, the calculations are successful for 10,000,000 steps with the time step 0.1 × R_E/c by fourth and sixth RKG with cylindrical coordinates. The calculations by standard Runge-Kutta method are failed in any coordinate system, and the calculations by fourth or sixth RKG with Cartesian or polar coordinates.."
 
+Figure~\ref{FIG:DipoleB_ex2_traj} shows representative trajectories for PS13, RK4, and RK45 for a 100~MeV electron with a $60^{\circ}$ pitch angle, evaluated over the final drift period (11.6~s) of the common time interval (70.4~minutes). By the end of the common time interval, both RK4 and RK45 have visible differences in azimuthal position relative to PS13.
+
+  \begin{figure}[H]
+        \centering
+            \captionsetup{width=0.75\textwidth}
+            \includegraphics[width=0.65\textwidth]{Images/Dipole/electron/456cbb_3Dslice.png}
+        \caption{Same as Figure~\ref{FIG:DipoleB_ex1_traj} but for a 100~MeV electron with an initial pitch angle of $60^{\circ}$, shown over the final drift period (11.6~s) of the common time interval, $\tau/T=1.5\times10^{5}$ (70.4~minutes). RKG is omitted due to its instability for electrons in Cartesian coordinates.}
+        \label{FIG:DipoleB_ex2_traj}
+    \end{figure}
+
+The corresponding relative errors of the exact invariants are shown in Fig.~\ref{FIG:Dipole_electron_all}: kinetic energy in panel~(a) and canonical momentum in panel~(b). The figure includes both the common time interval and the extended PS13 integration. Over the common time interval, all methods have relative kinetic energy errors that increase approximately linearly in time; however, PS13 has relative kinetic energy errors that are approximately 10 orders of magnitude lower than those of RK4 and RK45, and relative canonical momentum errors that are 8 to 9 orders of magnitude lower. At the common fixed time step, PS13 runtimes are longer than those of RK4 but substantially shorter than those of RK45. All relative errors and runtimes over the common time interval are summarized in Appendix Table~\ref{tab:electron_energy_results}.
+
+Beyond the common time interval, the PS13 run, extended to $\tau/T=10^{9}$ (325.8~days of physical time), shows the relative errors of both exact invariants continue to grow approximately linearly with simulated time, with no abrupt loss of accuracy or stability. As in the proton simulations, these results demonstrate that the PS method maintains long-time accuracy and stability even for highly relativistic electrons.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.75\textwidth}
+     \vspace{-3mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/electron/96ca63_KEerror.png}
+     \label{FIG:DipoleB_ex2_energyerror}
+    \end{subfigure}
+    \vspace{-4mm} %negative space
+    \begin{subfigure}[t]{0.75\textwidth}
+        \vspace{-6mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/electron/96ca63_Pphierror.png}
+    \label{FIG:DipoleB_ex2_momentumerror}
+    \end{subfigure}
+    \captionsetup{width=0.75\textwidth}
+    \caption{Relative errors of the exact invariants for the electron of Fig.~\ref{FIG:DipoleB_ex2_traj}: (a) kinetic energy and (b) canonical momentum. The PS13 run is extended beyond the common interval to $\tau/T=10^9$ ($\sim$325.8~days).} \label{FIG:Dipole_electron_all}
+\end{figure}
+
+Figure~\ref{FIG:bubbleplot_electrons} compares the trade-offs between invariant accuracy and computational runtime in our configuration: kinetic energy in panel~(a) and canonical momentum in panel~(b). Each marker represents the mean relative error computed over the final 1\% of the run. A complete tabulation of these metrics is provided in Appendix Table~\ref{tab:electron_energy_results}. 
+
+As in the proton simulations, RK4 has the shortest runtimes at the expense of the largest errors in both invariants. RK45 improves on RK4's accuracy but still conserves neither invariant well, and does so at the longest runtimes of any method; its relative kinetic energy error grows steadily, producing an increasing azimuthal phase error relative to the PS solution and, over longer integrations, the eventual loss of physically meaningful trajectories. By contrast, the PS method is the only method to attain low errors in both exact invariants simultaneously, at runtimes longer than RK4's but well below those of RK45.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.65\textwidth}
+     \vspace{-3mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/electron/electron_summary_results_energy.png}
+    \label{FIG:electron energy summary}
+    \end{subfigure}
+    \vspace{-4mm} %negative space
+    \begin{subfigure}[t]{0.65\textwidth}
+        \vspace{-6mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/electron/electron_summary_results_pphi.png}
+        \label{FIG:electron momentum summary}
+    \end{subfigure}
+
+    \captionsetup{width=0.65\textwidth}
+    \caption{Same as Figure~\ref{FIG:bubbleplot_protons} but for electrons at four energies (50~keV, 1~MeV, 100~MeV, and 150~MeV), with black-ringed markers denoting the $60^{\circ}$ pitch angle runs and plain filled markers the $90^{\circ}$ runs. Only the PS, RK4, and RK45 methods are shown; RKG is omitted due to its instability for electrons.}
+    \label{FIG:bubbleplot_electrons}
+\end{figure}
+
+
+
+\subsection{A Case Study at a Target Accuracy}\label{SEC:Dip Discussion}
+The previous simulations used identical time steps for the PS method and the fixed-step RK methods (RK4 and RKG), enabling direct, controlled comparisons. Under this configuration, RK4 generally had shorter runtimes at the expense of substantially larger relative kinetic energy and canonical momentum errors, while the PS method produced significantly higher accuracy with correspondingly longer runtimes; the PS method typically required up to four times the computational runtime of RK4 and runtimes comparable to RKG, as summarized in Tables~\ref{tab:proton_energy_results} and~\ref{tab:electron_energy_results}. As noted in Section~\ref{SEC:intro}, the PS step size is linked to the convergence rate of the power series representation, enabling the use of larger time steps. This motivates an alternative comparison in which PS, RK4, and RKG are instead run to meet a target relative kinetic energy error with time steps chosen as large as practical, allowing computational efficiency to be assessed on the basis of a minimum accuracy requirement rather than a common step size. Revisiting the 100~keV proton at a pitch angle of $30^\circ$, if a relative kinetic energy error below $10^{-5}$ is required over four drift periods, the PS method achieves this with a fixed time step of $\Delta\tau=54$, at which the mean truncation order rises to 22 (PS22); the RK4 method requires a much smaller step of $\Delta\tau=0.5$, and the RKG method a step of $\Delta\tau=7.9$. Under this comparison, the PS method completes the simulation approximately ten times faster than RK4 and twice as fast as RKG. 
+
+The corresponding relative errors of the exact invariants are shown in Fig.~\ref{fig:maxerror}: kinetic energy in panel~(a) and canonical momentum in panel~(b). Despite its much larger time step, PS22 has a relative kinetic energy error 5 orders of magnitude lower than those of the RK runs, and a relative canonical momentum error 2 orders of magnitude lower than that of RK4 and comparable to that of RKG. Although all methods are plotted on the same time axis, the first data points occur at different times due to the differing step sizes, resulting in an offset at the beginning of each curve. An analogous comparison for the electron simulations, using the PS and RK4 methods, gives the same qualitative result.
+
+\begin{figure}[H]
+    \centering
+    \begin{subfigure}[t]{0.75\textwidth}
+     \vspace{-3mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/proton/alternate/de9996_KEerror.png}
+        \label{FIG:DipoleB_ex3_energyerror} 
+  \end{subfigure}
+    \vspace{-4mm} %negative space
+    \begin{subfigure}[t]{0.75\textwidth}
+        \vspace{-6mm} %negative space
+        \caption{\raggedright }  
+        \centering
+        \includegraphics[width=\linewidth]{Images/Dipole/proton/alternate/de9996_Pphierror.png} 
+        \label{FIG:DipoleB_ex3_momentumerror} 
+    \end{subfigure}
+    \captionsetup{width=0.75\textwidth}
+    \caption{Relative errors of the exact invariants for the proton in Fig.~\ref{FIG:DipoleB_ex1_traj}: (a) kinetic energy and (b) canonical momentum. PS22 uses a fixed time step of $\Delta\tau = 54$, while RK4 uses a fixed time step of $\Delta\tau = 0.5$, and RKG uses a fixed time step of $\Delta\tau = 7.9$. All configurations were selected to reach a relative kinetic energy error below $10^{-5}$ over four drift periods while attempting to maximize computational efficiency.}
+    \label{fig:maxerror}
+\end{figure}
+
+Note that the 5 orders of magnitude difference in kinetic energy error between the PS method and the RK methods reflects a property of the PS method: increasing the step size raises the truncation order selected by the adaptive criterion while maintaining accuracy. Forcing the PS error up to the target accuracy required terminating the truncation early at an arbitrary fixed order, which increased the error without appreciably reducing runtime. Unlike the RK methods, whose error can be adjusted by the step size, the PS method derives its efficiency gains from the larger time steps the series representation supports rather than from sacrificing accuracy. Conversely, forcing the RK methods to errors comparable to the PS method's required thousands of steps per gyroperiod, with runtimes tens to hundreds of times slower than the PS method.
+
+The results show that the PS method can meet the accuracy requirement with significantly larger time steps, allowing computational gains when stringent accuracy criteria define solution requirements for a given time interval. Although computational runtime was not the primary objective of this study, these findings indicate that, with appropriate parameter selection, the PS method can be not only accurate but also competitive or superior in efficiency for charged-particle applications. Adopting additional methods for adaptive order and step-size control could further improve these results. 
+
+\section{Conclusions}\label{SEC:Conclusions}
+This study demonstrates that the Parker--Sochacki power series (PS) method provides a highly accurate and stable framework for integrating charged-particle motion in a magnetic dipole field. As discussed in Section~\ref{SEC:intro}, the long-time evolution of the magnetic moment has physical meaning only if it can be distinguished from numerical drift; by conserving the exact invariants to high precision up to $10^9$ equatorial gyroperiods, including for high-energy particles whose gyroradii are no longer small compared with the scale length over which the field varies, the PS method provides the numerical foundation such an analysis requires. Additionally, conservation of the invariants was accomplished without introducing  auxiliary constraints or engineering conservation into the method. This establishes it as a viable tool for evaluating the long-time behavior of the adiabatic invariants on timescales and in regimes where their conservation is not guaranteed by adiabatic theory. Although developed here in support of that goal, the precision of this framework extends naturally to other space physics applications with similarly stringent accuracy requirements, such as cutoff-rigidity and magnetospheric access calculations, where trajectories must remain physically accurate over many gyroperiods.
+
+These results establish the PS method as an alternative to traditional ODE solvers for charged-particle motion in magnetic fields, particularly for long-time, high-precision analyses. Benchmarked at identical fixed time steps against established RK methods (RK4, RK45, and the symplectic RKG), the PS method preserved the exact invariants of the problem to high precision, with relative kinetic energy errors 4 to 13 orders of magnitude lower than those of the RK methods and canonical momentum errors 4 to 10 orders of magnitude lower than those of the explicit RK methods, comparable to, and typically within an order of magnitude below, those of RKG. A further insight from this study is that the symplectic structure of the RKG method does not guarantee bounded energy error over arbitrarily long integrations of the static magnetic dipole problem. Although its kinetic energy error is initially bounded, extended integrations reveal the eventual onset of relative error growth. By contrast, the PS method's energy error grows approximately linearly but at a significantly smaller magnitude. 
+
+As noted in Section~\ref{sect:implementation}, wall-clock computation times indicate the relative behavior of the methods rather than definitive rankings, and conclusions regarding computational efficiency depend on the basis of comparison. At identical fixed time steps, the PS method has longer runtimes than RK4, but with relative kinetic energy errors several orders of magnitude smaller; because RK4 is the most computationally efficient fixed-step baseline considered here, step-matched comparisons understate the efficiency of the PS method when accuracy is the controlling constraint. When the methods are instead compared at a minimum target relative kinetic energy error, the PS method meets the target with substantially larger time steps; in representative proton and electron cases, it completes the simulations with runtimes up to an order of magnitude shorter than those of the RK methods. Finally, these comparisons are sensitive to implementation choices such as iteration tolerances and starting values. We found that such information is under-reported in the available literature, requiring reconstruction from reported step size or error levels. For this reason, the complete implementation of every integrator used in this study is openly available.
+
+\section*{Open Research}
+The PS and RK integrators and the analysis scripts used to generate all results in this study (version v1.0.0, released under a Creative Commons Attribution 4.0 International license) are openly available in the Zenodo repository at \url{https://doi.org/10.5281/zenodo.21026049} \cite{Jiles_PS_code}. No previously published or third-party datasets were used; all data presented in this work are produced by the archived software.
+
+\section*{Acknowledgments}
+This work was informed by unpublished notes by Reginald Ford (2015), which provided initial context for the problem.
 
 \pagebreak
 \printbibliography
+
+\pagebreak
+\appendix
+
+\setcounter{equation}{0} 
+\renewcommand{\theequation}{\thesection.\arabic{equation}} 
+
+
+\section{Examples - The Power Series Method}
+\label{sect:examples}
+In the PS formulation, all time-dependent variables are represented as power series expansions with recursively generated coefficients. We distinguish between two types of quantities: (i) dynamical variables, written without indexed subscripts (e.g., $x$, $v$), which are time-dependent variables governed directly by the ODE, and (ii) indexed quantities (e.g., $x_i$, $v_i$), which are constant coefficients of $t^i$ in the power series expansion that are solved for via recursion. Auxiliary variables are additional dynamical variables introduced to rewrite nonlinear functions into forms that allow for a recursion formula to be found \cite{Parker1996, Rudmin1998}.
+
+We demonstrate the fundamentals of the method with three simple ODEs. Example I (Section \ref{Intro: ExI}) introduces the basic PS method for a 1-D ODE, $dy/dx=y$, where no auxiliary variables are needed, and it generates the exact series solution. Example II (Section \ref{Intro: ExII}) is a nonlinear 1-D ODE, $dy/dx=y^2$, and an auxiliary variable is used to linearize it and allow the exact solution to be determined with a recurrence relation. Example III (Section \ref{Intro: ExIII}) is a 2-D nonlinear ODE, and the PS method generates an approximate solution using an auxiliary variable and truncating the resulting power series. These examples establish the foundation for applying the PS method to the magnetic dipole field in Section~\ref{sec:dipole}.
+
+\subsection{Example I - No Auxiliary Variables}\label{Intro: ExI}
+
+To first demonstrate the PS method with no auxiliary variables, consider the ODE
+    \begin{equation}\label{EQN: ExI dy/dx}
+        \frac{dy}{dx}=y\quad\mbox{with}\quad y(0) =1
+    \end{equation}
+and express $y$ as a power series with unknown constant coefficients $y_i$,
+    \begin{equation}\label{EQN: ExI y}
+            y=\sum_{i=0}^\infty y_ix^i,
+    \end{equation}
+for which the derivative with respect to $x$ is
+    \begin{equation}\label{EQN: ExI dy/dxi}
+        \frac{dy}{dx}=\sum_{i=0}^\infty y_iix^{i-1}.
+    \end{equation}
+We see that $y_0=y(0)$ follows from Eq.~\eqref{EQN: ExI y}. Substituting Eqs. \eqref{EQN: ExI y} and \eqref{EQN: ExI dy/dxi} into Eq.~\eqref{EQN: ExI dy/dx} gives
+    \begin{equation*}
+            \sum_{i=0}^\infty y_iix^{i-1}=\sum_{i=0}^\infty y_ix^i.\\
+    \end{equation*}
+The recurrence relation is derived by first equating common powers of $x$ by reindexing the left-hand side using $i \to i+1$ giving
+    \begin{equation*}
+        \sum_{i=0}^\infty y_{i+1}(i+1)x^{i}=\sum_{i=0}^\infty y_ix^i.
+    \end{equation*}
+Hereafter, we will refer to this step simply as ``reindexing.''  Equating powers of $x$ gives
+    \begin{equation}\label{EQN: ExI yi}
+        y_{i+1} = \frac{y_i}{(i+1)}.
+    \end{equation}
+The first three coefficients are
+    \begin{equation*}
+        y_1=1,\quad\quad y_2=\frac{1}{2},\quad\mbox{and}\quad y_3=\frac{1}{6}.
+    \end{equation*}
+The general solution to Eq.~\eqref{EQN: ExI y}, using coefficients determined by Eq.~\eqref{EQN: ExI yi}, is thus
+    \begin{equation*}
+        y=1+x+\frac{x^2}{2!}+\frac{x^3}{3!}+\dots=e^x,
+    \end{equation*}
+which is the exact solution of Eq.~\eqref{EQN: ExI dy/dx}.
+
+\subsection{Example II - Auxiliary Variable}\label{Intro: ExII}
+The previous example demonstrates the use of a power series, but an auxiliary variable was not needed. Next, consider the nonlinear ODE
+    \begin{equation}\label{EQN: ExII dydx}
+        \frac{dy}{dx}=y^2\quad\mbox{with}\quad y(0) =1.
+    \end{equation}
+First, express $y$ as a power series,
+    \begin{equation}\label{EQN: ExII y}
+        y=\sum_{i=0}^\infty y_ix^i,   
+    \end{equation}
+where we see that $y_0=y(0)$. An auxiliary variable, 
+    \begin{equation*}
+           u \equiv y^2 = \left(\sum_{i=0}^\infty y_i x^i\right)^2,
+    \end{equation*} 
+can be simplified using the Cauchy product identity \cite{Knuth1997},
+    \begin{equation}\label{eqn:cauchy}
+        \left(\sum_{i=0}^\infty a_ix^i\right)\left(\sum_{j=0}^\infty b_jx^j\right)=\sum_{k=0}^\infty x^k\sum_{l=0}^{k} a_lb_{k-l},
+    \end{equation}
+giving
+    \begin{equation}\label{EQN: ExII u}   
+           u=\sum_{i=0}^\infty  x^i \left(\sum_{j=0}^i y_j y_{i-j}\right).
+    \end{equation}      
+Taking the derivative of Eq.~\eqref{EQN: ExII y} with respect to $x$ and reindexing gives  
+    \begin{equation}\label{EQN: ExII dydxb}
+        \frac{dy}{dx}=\sum_{i=0}^\infty (i+1)y_{i+1}x^i.
+    \end{equation}
+Equating Eq.~\eqref{EQN: ExII u} and Eq.~\eqref{EQN: ExII dydxb} gives
+    \begin{equation*}
+        \sum_{i=0}^\infty (i+1)y_{i+1}x^i=\sum_{i=0}^\infty x^i\left(\sum_{j=0}^iy_jy_{i-j}\right). 
+        \end{equation*}
+Equating powers of $x$ gives the recurrence relation,
+    \begin{equation}
+        y_{i+1}=\frac{1}{(i+1)}\left(\sum_{j=0}^iy_jy_{i-j}\right).\label{EQN: ExII yi}
+    \end{equation}
+The first three terms are
+    \begin{align*}
+            y_1=y_0y_0=&1,\\
+            y_2=\frac{1}{2}\left(y_0y_1+y_1y_0\right)=&1,\\
+     \intertext{and}    
+            y_3=\frac{1}{3}\left(y_0y_2+y_1y_1+y_2y_0 \right)=&1.
+    \end{align*}
+By inspection, the general solution to Eq.~\eqref{EQN: ExII y}, using the coefficients determined by Eq. ~\eqref{EQN: ExII yi}, is 
+    \begin{equation*}
+        y=1+x+x^2+x^3+\dots=\frac{1}{1-x}\,,
+    \end{equation*}
+which is the exact solution of Eq.~\eqref{EQN: ExII dydx}. 
+
+\subsection{Example III - ODE Solver}\label{Intro: ExIII}
+The previous two examples demonstrated how the PS method constructs an exact power series solution and how auxiliary variables can be used to rewrite nonlinear terms to enable finding recurrence relations for the power series coefficients. While these problems could also be solved using the Picard method, they were selected to demonstrate the fundamental steps of the PS method. In these examples, the method directly produced closed-form power series exact solutions. However, most systems do not have a closed-form solution, and the Picard method becomes impractical due to the complexity of the algebraic expressions \cite{Ansari2024, Leal2015, Rudmin1998}. In this case, the PS method can be used as a numerical ODE solver by truncating the power series based on the number of meaningful contributing terms, defined as the maximum order for which the next term’s contribution to the sum is less than a defined tolerance, such as machine epsilon. This series is evaluated with a chosen time-step size of $\Delta t$ that determines how far in time the truncated series is used before it is reinitialized. When advanced iteratively, auxiliary variables can accumulate small numerical inconsistencies due to finite precision and truncation errors, leading to gradual deviation from their exact values. 
+
+At the start of the next iteration, an additional stabilization strategy known as tethering \cite{Stewart2009} can be used to control the long-time accumulation of numerical error in the auxiliary variables. Tethering reinitializes the auxiliary variable at the end of each iteration to its analytical definition.
+
+To demonstrate the setup of using the PS method for numerical ODE integration and tethering, we consider a system of two coupled ODEs corresponding to the one-dimensional motion of an object with quadratic drag:
+    \begin{align}
+            \frac{dx}{dt}=&\,v,\label{EQN: ExIII dx} \\
+            \frac{dv}{dt}=&-v^2\nonumber.
+    \end{align}
+We define the auxiliary variable $u\equiv v^2$. The variables $x$, $v$, and $u$ as power series in $t$ are
+    \begin{gather}
+        x=\sum_{i=0}^\infty x_it^i \label{EQN: ExIII x},\\
+        v=\sum_{i=0}^\infty v_it^i \label{EQN: ExIII v},\\
+     \intertext{and}    
+        u=\sum_{i=0}^\infty u_it^i  \label{EQN: ExIII u}.
+    \end{gather}
+From these power series, it follows that $x_0=x(0)$, $v_0=v(0)$, and $u_0=u(0)=v_0^2$. Taking the derivative of Eq.~\eqref{EQN: ExIII x} with respect to $t$ gives
+    \begin{equation*}
+        \frac{dx}{dt}=\sum_{i=0}^\infty ix_{i}t^{i-1}.
+    \end{equation*}
+Substituting these results and Eq.~\eqref{EQN: ExIII v} into Eq.~\eqref{EQN: ExIII dx}, and subsequently reindexing, gives  
+    \begin{equation*}\label{EQN: ExIII sumvsumx}
+        \sum_{i=0}^\infty (i+1)x_{i+1}t^{i}=\sum_{i=0}^\infty v_it^i  
+    \end{equation*}
+and equating powers of $t$ gives
+    \begin{equation}\label{EQN: ExIII xi}
+        x_{i+1}= \frac{v_i}{(i+1)}. 
+    \end{equation}
+Following the same process for Eq.~\eqref{EQN: ExIII v} gives
+    \begin{equation}\label{EQN: ExIII vi}
+        v_{i+1}= -\frac{u_i}{(i+1)}. 
+    \end{equation}
+For the final recurrence relation, note that
+    \begin{align*}
+        \frac{du}{dt}=2v\frac{dv}{dt}=-2vu.
+    \end{align*}
+Using this in the derivative of Eq.~\eqref{EQN: ExIII u} with respect to $t$ gives 
+    \begin{equation*}
+         \sum_{i=0}^\infty iu_it^{i-1}=\frac{du}{dt}=-2vu. 
+    \end{equation*} 
+Using Eqs. \eqref{EQN: ExIII v} and \eqref{EQN: ExIII u} gives
+    \begin{equation*}
+         \sum_{i=0}^\infty iu_it^{i-1}=-2\left( \sum_{i=0}^\infty v_it^i \right)\left( \sum_{i=0}^\infty u_it^i\right).
+    \end{equation*}
+Using the Cauchy product identity, Eq.~\eqref{eqn:cauchy}, gives
+   \begin{equation*}
+         \sum_{i=0}^\infty iu_it^{i-1}=-2\sum_{i=0}^\infty t^i\left(\sum_{j=0}^i v_ju_{i-j}\right).
+    \end{equation*}
+Reindexing the left-hand side and equating common powers of $t$ gives
+    \begin{equation}\label{EQN: ExIII ui}
+         u_{i+1}=-\frac{2}{i+1}\sum_{j=0}^iv_ju_{i-j}.
+    \end{equation}
+The recurrence relations, Eqs. \eqref{EQN: ExIII xi}, \eqref{EQN: ExIII vi}, and \eqref{EQN: ExIII ui}, can be substituted into Eqs. \eqref{EQN: ExIII x}, \eqref{EQN: ExIII v}, and \eqref{EQN: ExIII u}. Using the initial conditions and reindexing gives
+    \begin{gather} \label{EQN: ExIII fulleqns}
+        x(t)= x_0 + \sum_{i=0}^\infty\frac{v_i}{(i+1)} t^{i+1},\quad
+        v(t)= v_0 - \sum_{i=0}^\infty \frac{u_i}{(i+1)}t^{i+1}, \quad\mbox{and}\quad        
+        u(t)=u_0 - \sum_{i=0}^\infty \frac{2t^{i+1}}{i+1}\sum_{j=0}^iv_ju_{i-j}.
+    \end{gather}
+
+Although the relations in Eq.~\eqref{EQN: ExIII fulleqns} are expressed as an infinite series, a finite summation is needed for numerical calculations. The summations are terminated at an index denoted by the PS order, $M$. The PS order may be specified as a fixed value or set at each iteration by a criterion based on the significance of successive terms, for example, when additional contributions to the sum are less than a prescribed tolerance.
+
+The recurrence relations in Eqs.~\eqref{EQN: ExIII xi}--\eqref{EQN: ExIII ui} were derived for the power series solution and were therefore written without iteration superscripts. When the PS method is used as a numerical ODE solver, these relations are applied at each time step $k$ to generate a new set of coefficients via
+    \begin{gather}
+        x_{i+1}^{(k)}=\frac{v_i^{(k)}}{i+1}, \label{eqn:EXIII xi ODE solver} \\
+        v_{i+1}^{(k)}=-\frac{u_i^{(k)}}{i+1}, \label{eqn:EXIII vi ODE solver} \\
+        u_{i+1}^{(k)}=-\frac{2}{i+1}\sum_{j=0}^i v_j^{(k)}u_{i-j}^{(k)}\label{eqn:EXIII ui ODE solver}\thinspace.
+    \end{gather}
+Similarly, the quantities $(x_{0},v_{0},u_{0})$ that previously denoted the values at $t=0$ now become iteration-dependent initial conditions $(x_{0}^{(k)},v_{0}^{(k)},u_{0}^{(k)})$, corresponding to the values at the beginning of each time step. These coefficients are then substituted into the truncated power series from Eq.~\eqref{EQN: ExIII fulleqns}, giving
+       \begin{gather}
+        x^{(k)}(\Delta t) \approx x_0^{(k)} + \sum_{i=0}^{M} \frac{v_i^{(k)}}{i+1}\,\Delta t^{i+1}, \label{eqn:EXIII x ODE solver}\\
+        v^{(k)}(\Delta t) \approx v_0^{(k)} - \sum_{i=0}^{M} \frac{u_i^{(k)}}{i+1}\,\Delta t^{i+1}, \label{eqn:EXIII v ODE solver}\\
+\intertext{and}
+        u^{(k)}(\Delta t) \approx u_0^{(k)} - \sum_{i=0}^{M} \frac{2\Delta t^{i+1}}{i+1}
+        \left(\sum_{j=0}^{i} v_j^{(k)}\,u_{i-j}^{(k)}\right).\label{eqn:EXIII u ODE solver}
+    \end{gather}
+The values $\big(x^{(k)}(\Delta t),\,v^{(k)}(\Delta t),\,u^{(k)}(\Delta t)\big)$ define the state at iteration $k$. These values are used as the initial conditions, $\big(x_0^{(k+1)},\, v_0^{(k+1)}, \,u_0^{(k+1)}\big)$, for the next iteration, $k+1$, thereby producing an iterative numerical ODE solver. Recall that a non-indexed symbol such as $x(t)$, $v(t)$, or $u(t)$  denotes a time-dependent variable in the ODE, whereas a subscripted quantity  such as $x_i$, $v_i$, or $u_i$ refers to the constant coefficient of $t^i$ in the power series expansion, and a superscript such as $x_0^{(k)}$, $v_0^{(k)}$, or $u_0^{(k)}$
+denotes the value of the variable at iteration $k$.
+
+After each iteration, the dynamical variables $x$ and $v$ are updated using recurrence relationships. The auxiliary variable $u=v^2$ can be updated in two ways. We can either use $u^{(k)}$ as the initial condition $u_0^{(k+1)}$ for the next iteration or we can use $u_0^{(k+1)}\simeq(v^{(k)}(\Delta t ))^2$, its analytical definition updated with the dynamical variable $v$. The latter choice, tethering, reinitializes the auxiliary variable to its exact value. To summarize, initial conditions when advancing from iteration $k$ to $k+1$ can be done in two ways:\\
+
+\noindent
+\begin{minipage}{0.48\textwidth}
+\textbf{No Tethering}
+    \begin{align*}
+        x_0^{(k+1)} &= x^{(k)}\\
+        v_0^{(k+1)} &= v^{(k)}\\
+        u_0^{(k+1)} &= u^{(k)}
+    \end{align*}
+\emph{For each variable, the new initial condition is the last value from its truncated sum.\\}
+\end{minipage}\hfill
+\begin{minipage}{0.48\textwidth}
+\textbf{Tethering}
+    \begin{align*}
+        x_0^{(k+1)} &= x^{(k)}\\
+        v_0^{(k+1)} &= v^{(k)}\\
+        u_0^{(k+1)} &= \left(v^{(k)}\right)^2
+    \end{align*}
+\emph{Auxiliary variable, $u$, reinitialized using its definition, $u=v^2$. For dynamical variables, the new initial condition is the last value from the truncated sum.}
+\end{minipage}\\
+\newline
+
+
+To demonstrate the step-wise use of the recurrence relations, consider iteration $k=1$ and let $M=1$ and $\Delta t=1$.  From Eqs. \eqref{eqn:EXIII xi ODE solver}-\eqref{eqn:EXIII ui ODE solver}, the coefficient updates become
+    \begin{gather*}
+        x_{1}^{(1)}=v_0^{(1)}, \\
+        v_{1}^{(1)}=-u_0^{(1)},  \\
+\intertext{and}
+        u_{1}^{(1)}=-2v_0^{(1)}u_{0}^{(1)}.
+    \end{gather*}
+Applying these to Eqs. \eqref{eqn:EXIII x ODE solver}-\eqref{eqn:EXIII u ODE solver}, we obtain
+    \begin{gather*}
+        x^{(1)}(1) \approx x_0^{(1)} + v_0^{(1)}
+        - \tfrac12\big(v_0^{(1)}\big)^{2},\\
+        v^{(1)}(1) \approx v_0^{(1)} - u_0^{(1)} - \tfrac12 u_1^{(1)},\\
+\intertext{and}
+        u^{(1)}(1) \approx  u_0^{(1)} - 2v_0^{(1)}u_0^{(1)} - v_0^{(1)}u_1^{(1)} - v_1^{(1)}u_0^{(1)}.
+    \end{gather*}
+This completes the first PS iteration and provides the values that become the initial conditions for iteration $k=2$ under either tethered, $u_0^{(2)}=(v^{(1)})^2$, or untethered, $u_0^{(2)}=u^{(1)}$, updating of the auxiliary variable.
+
+
+\section{Supplemental Tables}\label{appendix:tables}
+\renewcommand{\thetable}{B.\arabic{table}}
+
+\begin{table}[H]
+\setlength{\extrarowheight}{2pt}
+\centering
+\caption{Proton simulation of mean and maximum relative kinetic energy and canonical momentum error in a magnetic dipole field with runtime for each method. Red text highlights method instability, and N/A indicates omitted method. In one run, the RK45 method was excluded from the analyses due to computational stalling or solver instability, which rendered completion untenable. Mean and maximum values were computed over the final 1\% of the run, $\tau/T=1.5\times 10^5$ equatorial gyroperiods with a fixed time step of $\Delta\tau=12.1$ initialized at $L=5$.}
+\label{tab:proton_energy_results}
+\setlength{\tabcolsep}{4pt}  
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+
+\textbf{Energy} & \textbf{Pitch} & \textbf{Method} & \textbf{$|\Delta E|/E_0$ (mean / max)} & \textbf{$|\Delta P_\phi|/P_{\phi_0}$ (mean / max)} & \textbf{Runtime (s)} \\
+\hline
+\multirow{8}{*}{10~keV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{7.29e-01} / \num{7.31e-01} & \num{3.38e-06} / \num{3.39e-06} & 168.1 \\
+  \cline{3-6}
+  &                             & RK4  & \num{1.01e-01} / \num{1.02e-01} & \num{4.21e-07} / \num{4.23e-07} & 5.8 \\
+  \cline{3-6}
+  &                             & RKG  & \num{3.87e-08} / \num{4.52e-08} & \num{1.79e-13} / \num{2.00e-13} & 15.8 \\
+  \cline{3-6}
+  &                             & PS   & \num{1.70e-12} / \num{1.70e-12} & \num{2.24e-14} / \num{2.27e-14} & 13.6 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$30^\circ$} & RK45 & N/A  & N/A & N/A \\
+  \cline{3-6}
+  &                             & RK4  & \textcolor{red}{\num{2.81e+06}} / \textcolor{red}{\num{2.81e+06}} & \textcolor{red}{\num{2.29e-02}} / \textcolor{red}{\num{2.29e-02}} & \textcolor{red}{5.5} \\
+  \cline{3-6}
+  &                             & RKG  & \num{6.57e-06} / \num{2.90e-05} & \num{5.63e-13} / \num{5.73e-13} & 17.1 \\
+  \cline{3-6}
+  &                             & PS   & \num{1.39e-11} / \num{1.39e-11} & \num{1.15e-13} / \num{1.16e-13} & 19.2 \\
+\hline
+\multirow{8}{*}{100~keV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{2.80e-01} / \num{2.81e-01} & \num{1.27e-05} / \num{1.28e-05} & 214.9 \\
+  \cline{3-6}
+  &                             & RK4  & \num{9.50e-02} / \num{9.55e-02} & \num{4.00e-06} / \num{4.02e-06} & 5.5 \\
+  \cline{3-6}
+  &                             & RKG  & \num{4.94e-08} / \num{6.84e-08} & \num{5.61e-13} / \num{5.69e-13} & 14.8 \\
+  \cline{3-6}
+  &                             & PS   & \num{3.93e-12} / \num{3.93e-12} & \num{2.62e-13} / \num{2.62e-13} & 16.6 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$30^\circ$} & RK45 & \num{5.44e-01} / \num{5.46e-01} & \num{3.76e-06} / \num{3.77e-06} & 463.1 \\
+  \cline{3-6}
+  &                             & RK4  & \textcolor{red}{\num{3.62e+05}} / \textcolor{red}{\num{3.62e+05}} & \textcolor{red}{\num{4.22e-01}} / \textcolor{red}{\num{4.22e-01}} & \textcolor{red}{4.9} \\
+  \cline{3-6}
+  &                             & RKG  & \num{5.56e-06} / \num{2.50e-05} & \num{8.13e-13} / \num{8.32e-13} & 15.4 \\
+  \cline{3-6}
+  &                             & PS   & \num{1.44e-11} / \num{1.44e-11} & \num{5.67e-14} / \num{5.72e-14} & 21.8 \\
+\hline
+\multirow{8}{*}{1~MeV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{9.32e-02} / \num{9.37e-02} & \num{4.29e-05} / \num{4.31e-05} & 245.1 \\
+  \cline{3-6}
+  &                             & RK4  & \num{7.76e-02} / \num{7.80e-02} & \num{3.43e-05} / \num{3.44e-05} & 5.1 \\
+  \cline{3-6}
+  &                             & RKG  & \num{8.13e-08} / \num{1.28e-07} & \num{1.72e-12} / \num{1.73e-12} & 15.4 \\
+  \cline{3-6}
+  &                             & PS   & \num{3.11e-12} / \num{3.11e-12} & \num{1.26e-13} / \num{1.26e-13} & 15.0 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$30^\circ$} & RK45 & \num{1.71e-01} / \num{1.72e-01} & \num{1.65e-05} / \num{1.66e-05} & 460.6 \\
+  \cline{3-6}
+  &                             & RK4  & \textcolor{red}{\num{4.26e+04}} / \textcolor{red}{\num{4.26e+04}} & \textcolor{red}{\num{9.94e-02}} / \textcolor{red}{\num{9.94e-02}} & \textcolor{red}{4.9} \\
+  \cline{3-6}
+  &                             & RKG  & \num{3.40e-06} / \num{1.58e-05} & \num{1.45e-12} / \num{1.47e-12} & 15.6 \\
+  \cline{3-6}
+  &                             & PS   & \num{1.02e-11} / \num{1.02e-11} & \num{1.43e-14} / \num{1.47e-14} & 20.3 \\
+\hline
+\multirow{8}{*}{10~MeV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{2.68e-02} / \num{2.70e-02} & \num{1.45e-04} / \num{1.46e-04} & 263.6 \\
+  \cline{3-6}
+  &                             & RK4  & \num{4.45e-02} / \num{4.48e-02} & \num{2.22e-04} / \num{2.23e-04} & 4.9 \\
+  \cline{3-6}
+  &                             & RKG  & \num{2.03e-07} / \num{2.83e-07} & \num{8.83e-13} / \num{8.96e-13} & 13.4 \\
+  \cline{3-6}
+  &                             & PS   & \num{7.27e-12} / \num{7.27e-12} & \num{7.80e-14} / \num{7.82e-14} & 15.1 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$30^\circ$} & RK45 & \num{4.33e-02} / \num{4.36e-02} & \num{7.30e-05} / \num{7.34e-05} & 449.2 \\
+  \cline{3-6}
+  &                             & RK4  & \num{5.65e-01} / \num{5.66e-01} & \num{8.46e-04} / \num{8.49e-04} & 5.7 \\
+  \cline{3-6}
+  &                             & RKG  & \num{8.65e-07} / \num{4.63e-06} & \num{3.93e-12} / \num{3.96e-12} & 16.5 \\
+  \cline{3-6}
+  &                             & PS   & \num{4.57e-12} / \num{4.57e-12} & \num{3.50e-13} / \num{3.50e-13} & 20.2 \\
+\hline
+\end{tabular}
+\end{table}
+
+\renewcommand{\thetable}{B.\arabic{table}}
+\begin{table}[H]
+\setlength{\extrarowheight}{2pt}
+\centering
+\caption{Electron simulation of mean and maximum relative kinetic energy error and relative canonical momentum error in a magnetic dipole field with runtime for each method. N/A indicates omitted method. In one run, the RK45 method was excluded from the analyses due to computational stalling or solver instability, which rendered completion untenable. The remaining omitted runs were the RKG method, which was unstable for electrons in Cartesian coordinates. Mean and maximum values were computed over the final 1\% of the run, $\tau/T= 1.5\times 10^5$ equatorial gyroperiods with a fixed time step of $\Delta\tau=12.1$ initialized at $L=5$.  }
+\label{tab:electron_energy_results}
+\setlength{\tabcolsep}{4pt}  
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{Energy} & \textbf{Pitch} & \textbf{Method} & \textbf{$|\Delta E|/E_0$ (mean / max)} & \textbf{$|\Delta P_\phi|/P_{\phi_0}$ (mean / max)} & \textbf{Runtime (s)} \\
+\hline
+\multirow{8}{*}{50~keV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{8.07e-01} / \num{8.10e-01} & \num{1.93e-08} / \num{1.94e-08} & 172.7 \\
+  \cline{3-6}
+  &                             & RK4  & \num{1.05e-01} / \num{1.05e-01} & \num{1.23e-09} / \num{1.24e-09} & 5.2 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{1.61e-12} / \num{1.61e-12} & \num{6.52e-14} / \num{6.58e-14} & 13.9 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$60^\circ$} & RK45 & \num{9.14e-01} / \num{9.16e-01} & \num{1.45e-08} / \num{1.46e-08} & 199.9 \\
+  \cline{3-6}
+  &                             & RK4  & \num{2.63e-01} / \num{2.65e-01} & \num{2.03e-09} / \num{2.05e-09} & 5.1 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{2.04e-12} / \num{2.04e-12} & \num{6.81e-14} / \num{6.86e-14} & 17.7 \\
+\hline
+\multirow{8}{*}{1~MeV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{1.00} / \num{1.00} & \num{7.54e-07} / \num{7.54e-07} & 122.0 \\
+  \cline{3-6}
+  &                             & RK4  & \num{1.06e-01} / \num{1.06e-01} & \num{4.68e-08} / \num{4.70e-08} & 5.1 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{8.53e-12} / \num{8.53e-12} & \num{2.78e-13} / \num{2.79e-13} & 14.1 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$60^\circ$} & RK45 & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & RK4  & \num{2.67e-01} / \num{2.68e-01} & \num{7.74e-08} / \num{7.77e-08} & 5.3 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{2.01e-12} / \num{2.01e-12} & \num{5.71e-14} / \num{5.76e-14} & 17.8 \\
+\hline
+\multirow{8}{*}{100~MeV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{5.18e-02} / \num{5.21e-02} & \num{9.94e-05} / \num{9.99e-05} & 374.9 \\
+  \cline{3-6}
+  &                             & RK4  & \num{2.18e-01} / \num{2.19e-01} & \num{4.04e-04} / \num{4.05e-04} & 5.1 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{8.75e-12} / \num{8.75e-12} & \num{4.03e-13} / \num{4.03e-13} & 16.6 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$60^\circ$} & RK45 & \num{5.48e-02} / \num{5.51e-02} & \num{7.12e-05} / \num{7.16e-05} & 400.6 \\
+  \cline{3-6}
+  &                             & RK4  & \num{6.06e-01} / \num{6.08e-01} & \num{6.38e-04} / \num{6.41e-04} & 5.2 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{1.02e-11} / \num{1.02e-11} & \num{1.26e-13} / \num{1.26e-13} & 20.6 \\
+\hline
+\multirow{8}{*}{150~MeV}
+  & \multirow{4}{*}{$90^\circ$} & RK45 & \num{3.81e-02} / \num{3.83e-02} & \num{1.52e-04} / \num{1.53e-04} & 437.9 \\
+  \cline{3-6}
+  &                             & RK4  & \num{3.10e-01} / \num{3.11e-01} & \num{1.17e-03} / \num{1.17e-03} & 5.5 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{9.45e-15} / \num{9.45e-15} & \num{2.91e-13} / \num{2.91e-13} & 16.8 \\
+  \cline{2-6}
+  & \multirow{4}{*}{$60^\circ$} & RK45 & \num{4.06e-02} / \num{4.08e-02} & \num{1.05e-04} / \num{1.06e-04} & 451.8 \\
+  \cline{3-6}
+  &                             & RK4  & \num{9.00e-01} / \num{9.02e-01} & \num{1.65e-03} / \num{1.65e-03} & 5.8 \\
+  \cline{3-6}
+  &                             & RKG  & N/A & N/A & N/A \\
+  \cline{3-6}
+  &                             & PS   & \num{4.28e-12} / \num{4.28e-12} & \num{3.79e-14} / \num{3.83e-14} & 21.2 \\
+\hline
+\end{tabular}
+\end{table}
+
+
 
 \end{document}
 
